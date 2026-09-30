@@ -69,6 +69,11 @@ dev-check accepted the first candidate with three low findings. Owner fixes:
   document width is 320 at 320 (was 329), 360 at 360 and 390 at 390. Nav links
   are 29px tall.
 - F3 manifest: `.DS_Store` files removed from `evidence/candidate.sha256`.
+- F4 (dev-check re-check qitem-20260930185410-c830fe34): the two-column summary
+  clipped "Invested in stocks" below 375px. Summary cards now stack in one column
+  under 375px. With worst-case text ($100,000.00 cash, $99,999.99 invested),
+  every value fits inside `.summary` at 320/340/360/374 (1 column) and
+  375/390/414 (2 columns, 6px spare at 375). Page width equals viewport at all.
 
 Rechecked: 10 tests OK, `ruff check trading-platform` passed, `uvx pyright` 0 errors.
 
