@@ -1,0 +1,15 @@
+[project]
+name = "paper-trading-platform"
+version = "0.1.0"
+description = "Local paper trading with Django Bolt"
+requires-python = ">=3.12"
+dependencies = ["django>=5.2,<6.1", "django-bolt>=0.10,<0.11"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+typeCheckingMode = "basic"
+useLibraryCodeForTypes = false
