@@ -22,7 +22,8 @@ jobs:
         with:
           enable-cache: true
       - run: uv sync --locked
-      - run: uvx ruff check .
+      # Pinned: 0.16 enables more default rules (7 findings). Bump in a PR with the fixes.
+      - run: uvx ruff@0.15.7 check .
       - run: uv run python manage.py check
       - run: uv run python manage.py makemigrations --check --dry-run
       - run: uv run python manage.py test
