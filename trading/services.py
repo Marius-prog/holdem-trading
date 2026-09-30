@@ -48,14 +48,16 @@ def get_state() -> dict:
         price = QUOTES[holding.symbol][1]
         market_value = price * holding.quantity
         holdings_value += market_value
-        holdings.append({
-            "symbol": holding.symbol,
-            "quantity": holding.quantity,
-            "average_cost": money(holding.average_cost),
-            "price": money(price),
-            "market_value": money(market_value),
-            "unrealized_pnl": money((price - holding.average_cost) * holding.quantity),
-        })
+        holdings.append(
+            {
+                "symbol": holding.symbol,
+                "quantity": holding.quantity,
+                "average_cost": money(holding.average_cost),
+                "price": money(price),
+                "market_value": money(market_value),
+                "unrealized_pnl": money((price - holding.average_cost) * holding.quantity),
+            }
+        )
     return {
         "account": {
             "cash": money(account.cash),

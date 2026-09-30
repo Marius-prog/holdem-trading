@@ -18,7 +18,9 @@ class TradingTests(TestCase):
 
     def trade(self, **overrides):
         payload = {
-            "symbol": "AAPL", "side": "buy", "quantity": 2,
+            "symbol": "AAPL",
+            "side": "buy",
+            "quantity": 2,
             "client_order_id": str(uuid4()),
         }
         payload.update(overrides)
@@ -28,9 +30,14 @@ class TradingTests(TestCase):
         response = self.client.get("/api/state")
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["account"], {
-            "cash": "100000.00", "holdings_value": "0.00", "total_value": "100000.00",
-        })
+        self.assertEqual(
+            data["account"],
+            {
+                "cash": "100000.00",
+                "holdings_value": "0.00",
+                "total_value": "100000.00",
+            },
+        )
         self.assertEqual(len(data["quotes"]), 6)
         self.assertEqual(data["holdings"], [])
         self.assertEqual(data["orders"], [])
@@ -64,10 +71,17 @@ class TradingTests(TestCase):
     def test_invalid_orders_preserve_all_state(self):
         before = get_state()
         invalid = [
-            {"quantity": 0}, {"quantity": -1}, {"quantity": 1.5},
-            {"quantity": True}, {"quantity": "2"}, {"quantity": 1_000_001},
-            {"quantity": 1_000_000}, {"side": "sell"}, {"side": "hold"},
-            {"symbol": "UNKNOWN"}, {"client_order_id": "invalid"},
+            {"quantity": 0},
+            {"quantity": -1},
+            {"quantity": 1.5},
+            {"quantity": True},
+            {"quantity": "2"},
+            {"quantity": 1_000_001},
+            {"quantity": 1_000_000},
+            {"side": "sell"},
+            {"side": "hold"},
+            {"symbol": "UNKNOWN"},
+            {"client_order_id": "invalid"},
         ]
         for payload in invalid:
             with self.subTest(payload=payload):
@@ -83,23 +97,24 @@ class TradingTests(TestCase):
         self.assertEqual(get_state(), before)
 
     def test_header_required_and_cors_not_enabled(self):
-        payload = {"symbol": "AAPL", "side": "buy", "quantity": 1,
-                   "client_order_id": str(uuid4())}
+        payload = {"symbol": "AAPL", "side": "buy", "quantity": 1, "client_order_id": str(uuid4())}
         response = self.client.post("/api/orders", json=payload)
         self.assertEqual(response.status_code, 403)
         self.assertFalse(Order.objects.exists())
-        response = self.client.options("/api/orders", headers={
-            "Origin": "https://example.com",
-            "Access-Control-Request-Headers": "X-Paper-Trade",
-            "Access-Control-Request-Method": "POST",
-        })
+        response = self.client.options(
+            "/api/orders",
+            headers={
+                "Origin": "https://example.com",
+                "Access-Control-Request-Headers": "X-Paper-Trade",
+                "Access-Control-Request-Method": "POST",
+            },
+        )
         self.assertNotIn("access-control-allow-origin", response.headers)
 
     def test_foreign_host_is_refused(self):
         # DNS rebinding: a page on evil.example resolving to 127.0.0.1 is same-origin.
         foreign = {"Host": "evil.example:8765"}
-        payload = {"symbol": "AAPL", "side": "buy", "quantity": 1,
-                   "client_order_id": str(uuid4())}
+        payload = {"symbol": "AAPL", "side": "buy", "quantity": 1, "client_order_id": str(uuid4())}
         response = self.client.post(
             "/api/orders", json=payload, headers={**foreign, "X-Paper-Trade": "1"}
         )
@@ -111,9 +126,11 @@ class TradingTests(TestCase):
 
     def test_failed_order_write_rolls_back_cash_and_holdings(self):
         before = get_state()
-        with patch.object(Order.objects, "create", side_effect=RuntimeError("write failed")):
-            with self.assertRaises(RuntimeError):
-                place_order("AAPL", "buy", 2, uuid4())
+        with (
+            patch.object(Order.objects, "create", side_effect=RuntimeError("write failed")),
+            self.assertRaises(RuntimeError),
+        ):
+            place_order("AAPL", "buy", 2, uuid4())
         self.assertEqual(get_state(), before)
 
     def test_orders_are_newest_first_and_limited(self):
