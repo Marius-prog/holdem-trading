@@ -178,7 +178,8 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
         price=price,
         total=total,
     )
-    apply_stop(symbol, price)  # Re-upgrades at once if already 7% above the new average.
+    if holding:
+        apply_stop(symbol, price)  # Re-upgrades at once if already 7% above the new average.
     return order_data(order)
 
 

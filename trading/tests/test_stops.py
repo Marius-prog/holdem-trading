@@ -117,6 +117,12 @@ class StopProtectionTests(TestCase):
         self.assertEqual(holding["average_cost"], "101.09")
         self.assertEqual((holding["stop_type"], holding["stop_price"]), ("trailing", "98.56"))
 
+    def test_new_position_at_one_cent_is_not_stopped_out_by_its_own_buy(self):
+        self.set_price("AAPL", "0.01")  # 0.75 x 0.01 rounds to a 0.01 stop
+        self.buy("AAPL", 5)
+        self.assertEqual(Holding.objects.get().quantity, 5)
+        self.assertEqual(Order.objects.count(), 1)
+
     def test_set_price_requires_header_and_rejects_invalid_input(self):
         self.buy()
         before = get_state()
