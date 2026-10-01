@@ -66,8 +66,9 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
 - Kill switch: the account tracks its highest portfolio value after each price
   change. While the value is more than 15% below that peak, new buys are refused
   and the dashboard says so; sells, stops and profit-taking keep working. Buys
-  resume once the value is back at the threshold, or once every position has
-  closed: a flat account restarts its peak at its cash.
+  resume once the value is back at the threshold, or after **Reset kill switch**
+  (shown only while buys are halted), which restarts the peak at the current
+  value. Closing every position does not lift the halt on its own.
 - Paper cash is capped at $1,000,000,000,000.00 so SQLite keeps it exact to the
   cent. A sale, or a price move whose automatic sale would pass the cap, is refused
   and nothing changes.
@@ -90,6 +91,7 @@ PAPER_TRADING_DB=/tmp/paperdesk-demo.sqlite3 uv run python manage.py runbolt --h
 | `POST /api/orders` | Submit or replay a paper order |
 | `POST /api/quotes` | Set one symbol's price, apply stops, return the new state |
 | `POST /api/tick` | Move every price by up to 3%, apply stops, return the new state |
+| `POST /api/kill-switch/reset` | While buys are halted, restart the equity peak at the current value |
 
 Money is returned as decimal strings. Order and price writes require the
 `X-Paper-Trade: 1` header, with JSON bodies. This prevents ordinary cross-origin form submissions;
