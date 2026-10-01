@@ -25,6 +25,7 @@ COPY_MAX_PER_STOCK = Decimal("10000.00")
 COPY_LAG_DAYS = 45
 COPY_SELL_DIVISOR = 3  # each sell filing sells a third of the position
 SYMBOL = re.compile(r"[A-Z]{1,5}")
+KILL_SWITCH_SKIP = "Not mirrored: the kill switch is on."
 
 
 def mirror(symbol: str, side: str, bucket: int, traded_on: date) -> str:
@@ -47,7 +48,7 @@ def mirror(symbol: str, side: str, bucket: int, traded_on: date) -> str:
         sell(account, holding, shares, price, uuid4(), "copy")
         return f"Sold {shares} {symbol} at ${price:,}."
     if buys_halted():
-        return "Not mirrored: the kill switch is on."
+        return KILL_SWITCH_SKIP
     cost = holding.average_cost * holding.quantity if holding else Decimal(0)
     size = COPY_BUCKETS[bucket][1]
     spend, reason = min(  # the tightest limit decides, and explains a skipped buy
@@ -78,8 +79,12 @@ def record_filing(filer: str, symbol: str, side: str, bucket: int, traded_on: da
         raise TradeError("Choose one of the trade-size ranges.")
     if traded_on > timezone.localdate():
         raise TradeError("The trade date cannot be in the future.")
+    # The same trade by the same filer (in any capitalisation) counts once, unless the
+    # kill switch stopped it; then entering it again replaces it and mirrors it again.
     trade = {"symbol": symbol, "side": side, "bucket": bucket, "traded_on": traded_on}
-    if Filing.objects.filter(filer__iexact=filer, **trade).exists():  # any capitalisation
+    earlier = [f for f in Filing.objects.filter(**trade) if f.filer.casefold() == filer.casefold()]
+    if any(f.outcome != KILL_SWITCH_SKIP for f in earlier):
         raise TradeError("This filing was already recorded.", 409)
+    Filing.objects.filter(pk__in=[f.pk for f in earlier]).delete()
     Filing.objects.create(filer=filer, **trade, outcome=mirror(symbol, side, bucket, traded_on))
     return get_state()

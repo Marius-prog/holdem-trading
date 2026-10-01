@@ -133,10 +133,25 @@ class CopyTraderTests(ApiTestCase):
             self.outcome(), "Not mirrored: a third of 2 KO shares rounds down to zero."
         )
 
+    def test_filing_refused_by_the_kill_switch_can_be_entered_again(self):
+        self.file(bucket=1)  # 5 JPM, creates the account
+        Account.objects.filter(pk=1).update(equity_peak=Decimal("200000.00"))
+        self.file(bucket=1, days_ago=4)
+        self.assertEqual(self.outcome(), "Not mirrored: the kill switch is on.")
+        self.assertEqual(self.file(bucket=1, days_ago=4).status_code, 200)  # still halted
+        self.client.post("/api/kill-switch/reset", headers=HEADERS)
+        self.assertEqual(self.file(bucket=1, days_ago=4, filer="a. member").status_code, 200)
+        self.assertEqual(self.outcome(), "Bought 5 JPM at $293.88.")
+        self.assertEqual(self.shares(), 10)
+        self.assertEqual(len(self.client.get("/api/state").json()["copy"]["filings"]), 2)
+        self.assertEqual(self.file(bucket=1, days_ago=4).status_code, 409)  # mirrored now
+
     def test_duplicates_ignore_filer_case(self):
         self.file(filer="A. Member")
         self.assertEqual(self.file(filer="a. member").status_code, 409)
         self.assertEqual(self.shares(), 5)
+        self.file(filer="Žygis", days_ago=4)
+        self.assertEqual(self.file(filer="žygis", days_ago=4).status_code, 409)
 
     def test_filings_are_validated_and_guarded(self):
         self.assertEqual(self.file(headers={}).status_code, 403)
