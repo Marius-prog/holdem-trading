@@ -199,6 +199,7 @@ class StopProtectionTests(TestCase):
         refused = self.client.post("/api/orders", json=order, headers=HEADERS)
         self.assertEqual(refused.status_code, 400)
         self.assertIn("Kill switch", refused.json()["detail"])
+        self.assertIn("or after you reset the kill switch", refused.json()["detail"])
         replay = {key: first[key] for key in ("symbol", "side", "quantity", "client_order_id")}
         self.assertEqual(
             self.client.post("/api/orders", json=replay, headers=HEADERS).json(), first

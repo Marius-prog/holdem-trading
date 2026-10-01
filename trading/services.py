@@ -197,7 +197,8 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
     if equity(account, prices) < halt_below(account):
         raise TradeError(
             f"Kill switch: portfolio value is more than 15% below its "
-            f"${account.equity_peak:,} peak. Buys resume at ${halt_below(account):,}."
+            f"${account.equity_peak:,} peak. Buys resume at ${halt_below(account):,}, "
+            f"or after you reset the kill switch."
         )
     total = price * quantity
     if total > account.cash:
