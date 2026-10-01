@@ -211,26 +211,39 @@ class StopProtectionTests(TestCase):
         self.assertFalse(self.client.get("/api/state").json()["risk"]["buys_halted"])
         self.buy("MSFT", 1)
 
-    def test_kill_switch_lifts_when_a_stop_closes_the_last_position(self):
+    def test_kill_switch_stays_on_when_flat_until_reset(self):
         self.buy("AAPL", 439)  # 99,881.28
         self.set_price("AAPL", "190.00")  # equity 83,528.72: halted
-        self.assertTrue(self.client.get("/api/state").json()["risk"]["buys_halted"])
         state = self.set_price("AAPL", "170.00").json()  # the hard stop sells all 439
         self.assertEqual(state["holdings"], [])
-        self.assertEqual(state["risk"]["equity_peak"], "74748.72")
-        self.assertFalse(state["risk"]["buys_halted"])
-        self.buy("MSFT", 1)
+        self.assertTrue(state["risk"]["buys_halted"])
+        order = {"symbol": "MSFT", "side": "buy", "quantity": 1, "client_order_id": str(uuid4())}
+        self.assertEqual(
+            self.client.post("/api/orders", json=order, headers=HEADERS).status_code, 400
+        )
+        response = self.client.post("/api/kill-switch/reset", headers=HEADERS)
+        self.assertEqual(response.status_code, 200, response.text)
+        risk = response.json()["risk"]
+        self.assertEqual((risk["equity_peak"], risk["buys_halted"]), ("74748.72", False))
+        self.assertEqual(
+            self.client.post("/api/orders", json=order, headers=HEADERS).status_code, 200
+        )
 
-    def test_kill_switch_lifts_when_a_manual_sell_closes_the_last_position(self):
+    def test_kill_switch_reset_is_guarded_and_only_works_while_halted(self):
         self.buy("AAPL", 100)
+        not_halted = self.client.post("/api/kill-switch/reset", headers=HEADERS)
+        self.assertEqual(not_halted.status_code, 400)
+        self.assertIn("not on", not_halted.json()["detail"])
+        self.assertEqual(self.client.post("/api/kill-switch/reset").status_code, 403)
+        foreign = {**HEADERS, "Host": "evil.example:8765"}
+        self.assertEqual(
+            self.client.post("/api/kill-switch/reset", headers=foreign).status_code, 400
+        )
         Account.objects.filter(pk=1).update(equity_peak=Decimal("120000.00"))
         sell = {"symbol": "AAPL", "side": "sell", "quantity": 100, "client_order_id": str(uuid4())}
-        self.assertEqual(
-            self.client.post("/api/orders", json=sell, headers=HEADERS).status_code, 200
-        )
-        risk = self.client.get("/api/state").json()["risk"]
-        self.assertEqual((risk["equity_peak"], risk["buys_halted"]), ("100000.00", False))
-        self.buy("MSFT", 1)
+        self.client.post("/api/orders", json=sell, headers=HEADERS)  # flat: still halted
+        self.assertTrue(self.client.get("/api/state").json()["risk"]["buys_halted"])
+        self.assertEqual(Account.objects.get(pk=1).equity_peak, Decimal("120000.00"))
 
     def test_stops_round_down_so_cent_positions_are_not_at_their_stop(self):
         for symbol, price, stop in [("AAPL", "0.01", "0.00"), ("MSFT", "0.02", "0.01")]:

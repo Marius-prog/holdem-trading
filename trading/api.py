@@ -9,7 +9,7 @@ from django_bolt import JSON, BoltAPI, Request
 from django_bolt.param_functions import Header
 from django_bolt.shortcuts import render
 
-from .services import TradeError, get_state, place_order, set_price, tick
+from .services import TradeError, get_state, place_order, reset_kill_switch, set_price, tick
 
 api = BoltAPI()
 HostHeader = Annotated[str, Header(alias="host")]
@@ -80,6 +80,16 @@ async def update_quote(
         return refused
     try:
         return await sync_to_async(set_price)(quote.symbol, quote.price)
+    except TradeError as error:
+        return JSON({"detail": str(error)}, status_code=error.status)
+
+
+@api.post("/api/kill-switch/reset")
+async def kill_switch_reset(paper_trade: PaperTradeHeader = "", host: HostHeader = ""):
+    if refused := refuse_write(host, paper_trade):
+        return refused
+    try:
+        return await sync_to_async(reset_kill_switch)()
     except TradeError as error:
         return JSON({"detail": str(error)}, status_code=error.status)
 

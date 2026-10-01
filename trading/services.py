@@ -78,13 +78,14 @@ def halt_below(account: Account) -> Decimal:
     return (account.equity_peak * (1 - KILL_SWITCH_DRAWDOWN)).quantize(CENT)
 
 
-def record_equity_peak() -> None:
-    """Raise the peak to current equity. A flat account restarts it at its cash, so a
-    halt cannot outlive the positions that caused it."""
-    account, _ = Account.objects.get_or_create(pk=1)
+def capped_equity(account: Account) -> Decimal:
     # ponytail: capped like cash so SQLite keeps it exact; the switch is moot at that size.
-    peak = min(equity(account, load_prices()), MAX_CASH)
-    if peak > account.equity_peak or not Holding.objects.exists():
+    return min(equity(account, load_prices()), MAX_CASH)
+
+
+def record_equity_peak() -> None:
+    account, _ = Account.objects.get_or_create(pk=1)
+    if (peak := capped_equity(account)) > account.equity_peak:
         account.equity_peak = peak
         account.save(update_fields=["equity_peak"])
 
@@ -184,7 +185,6 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
             raise TradeError("This order ID was already used for a different order.", 409)
         return order_data(existing)
 
-    record_equity_peak()
     account, _ = Account.objects.get_or_create(pk=1)
     holding = Holding.objects.filter(symbol=symbol).first()
     prices = load_prices()
@@ -192,9 +192,7 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
     if side == "sell":
         if not holding or quantity > holding.quantity:
             raise TradeError("Insufficient shares to sell; short selling is not supported.")
-        order = sell(account, holding, quantity, price, client_order_id)
-        record_equity_peak()
-        return order_data(order)
+        return order_data(sell(account, holding, quantity, price, client_order_id))
 
     if equity(account, prices) < halt_below(account):
         raise TradeError(
@@ -286,6 +284,18 @@ def set_price(symbol: str, raw_price: str) -> dict:
     load_prices()
     move_price(symbol, price)
     record_equity_peak()
+    return get_state()
+
+
+@transaction.atomic
+def reset_kill_switch() -> dict:
+    """Restart the peak at current equity; only while the kill switch is on."""
+    account, _ = Account.objects.get_or_create(pk=1)
+    value = capped_equity(account)
+    if value >= halt_below(account):
+        raise TradeError("The kill switch is not on; there is nothing to reset.")
+    account.equity_peak = value
+    account.save(update_fields=["equity_peak"])
     return get_state()
 
 
