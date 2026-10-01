@@ -97,6 +97,26 @@ class StopProtectionTests(TestCase):
         self.assertEqual(holding["average_cost"], "213.76")
         self.assertEqual(holding["stop_price"], "160.32")
 
+    def test_adding_shares_resets_trailing_stop_to_hard_stop_on_new_average(self):
+        self.set_price("AAPL", "100.00")
+        self.buy("AAPL", 10)
+        self.set_price("AAPL", "110.00")
+        self.assertEqual(self.holding("AAPL")["stop_type"], "trailing")
+        self.buy("AAPL", 400)
+        holding = self.holding("AAPL")
+        self.assertEqual(holding["average_cost"], "109.76")
+        self.assertEqual((holding["stop_type"], holding["stop_price"]), ("hard", "82.32"))
+
+    def test_adding_shares_still_seven_percent_up_restarts_trail_at_current_price(self):
+        self.set_price("AAPL", "100.00")
+        self.buy("AAPL", 10)
+        self.set_price("AAPL", "114.00")
+        self.set_price("AAPL", "112.00")  # trail stays at peak 114 (stop 100.32)
+        self.buy("AAPL", 1)
+        holding = self.holding("AAPL")
+        self.assertEqual(holding["average_cost"], "101.09")
+        self.assertEqual((holding["stop_type"], holding["stop_price"]), ("trailing", "98.56"))
+
     def test_set_price_requires_header_and_rejects_invalid_input(self):
         self.buy()
         before = get_state()

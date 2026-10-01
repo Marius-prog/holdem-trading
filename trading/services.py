@@ -166,7 +166,8 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
         cost = holding.average_cost * holding.quantity + total
         holding.quantity += quantity
         holding.average_cost = (cost / holding.quantity).quantize(CENT)
-        holding.save(update_fields=["quantity", "average_cost"])
+        holding.trail_peak = None  # Added shares restart at the hard stop on the new average.
+        holding.save(update_fields=["quantity", "average_cost", "trail_peak"])
     else:
         Holding.objects.create(symbol=symbol, quantity=quantity, average_cost=price)
     order = Order.objects.create(
@@ -177,6 +178,7 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
         price=price,
         total=total,
     )
+    apply_stop(symbol, price)  # Re-upgrades at once if already 7% above the new average.
     return order_data(order)
 
 
