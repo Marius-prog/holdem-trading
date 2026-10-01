@@ -7,7 +7,7 @@ from django_bolt.testing import TestClient
 
 from trading.api import api
 from trading.models import Account, Holding, Order
-from trading.services import get_state
+from trading.services import MAX_CASH, get_state
 
 HEADERS = {"X-Paper-Trade": "1"}
 
@@ -129,6 +129,23 @@ class StopProtectionTests(TestCase):
         for item in response.json()["quotes"]:
             old, new = before[item["symbol"]], Decimal(item["price"])
             self.assertLessEqual(abs(new - old), old * Decimal("0.03") + Decimal("0.01"))
+
+    def test_cash_cap_refuses_sales_and_rolls_back_price_moves(self):
+        self.buy()
+        self.set_price("AAPL", "172.00")  # just above the 170.64 hard stop
+        Account.objects.filter(pk=1).update(cash=MAX_CASH - Decimal("100.00"))
+        before = get_state()
+        sell = {"symbol": "AAPL", "side": "sell", "quantity": 1, "client_order_id": str(uuid4())}
+        refused = [
+            self.client.post("/api/orders", json=sell, headers=HEADERS),
+            self.set_price("AAPL", "170.00"),  # hard stop would sell 2 x 170.00
+        ]
+        with patch("trading.services.random.randint", return_value=-300):
+            refused.append(self.client.post("/api/tick", headers=HEADERS))
+        for response in refused:
+            self.assertEqual(response.status_code, 400, response.text)
+            self.assertIn("cash above", response.json()["detail"])
+        self.assertEqual(get_state(), before)
 
     def test_tick_applies_stops_and_never_drops_price_below_one_cent(self):
         self.buy()

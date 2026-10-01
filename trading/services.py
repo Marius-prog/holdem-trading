@@ -19,6 +19,8 @@ MAX_QUANTITY = 1_000_000
 CENT = Decimal("0.01")
 MAX_PRICE = Decimal("1000000.00")
 MAX_TICK_BPS = 300  # A random tick moves each price by at most 3% either way.
+# SQLite stores decimals as REAL (~15 significant digits); this keeps cash exact to the cent.
+MAX_CASH = Decimal("1000000000000.00")
 
 # Stop protection: a hard stop below average cost, upgraded to a trailing stop
 # once the position gains enough. The trailing stop only ratchets up.
@@ -112,6 +114,8 @@ def sell(
     trigger: str = "",
 ) -> Order:
     total = price * quantity
+    if account.cash + total > MAX_CASH:
+        raise TradeError(f"This sale would take paper cash above ${MAX_CASH:,}.")
     account.cash += total
     account.save(update_fields=["cash"])
     holding.quantity -= quantity

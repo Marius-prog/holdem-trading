@@ -54,6 +54,9 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   reaches the stop, the whole position sells at the new price, which is below
   the stop after a gap. These sales show as Hard stop or Trailing stop in Recent
   activity.
+- Paper cash is capped at $1,000,000,000,000.00 so SQLite keeps it exact to the
+  cent. A sale, or a price move whose stop sale would pass the cap, is refused
+  and nothing changes.
 - This demo does not model spread, liquidity, exchange hours, or real execution.
 
 SQLite data is excluded from version control. To use a separate database without

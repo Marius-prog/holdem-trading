@@ -88,4 +88,7 @@ async def update_quote(
 async def market_tick(paper_trade: PaperTradeHeader = "", host: HostHeader = ""):
     if refused := refuse_write(host, paper_trade):
         return refused
-    return await sync_to_async(tick)()
+    try:
+        return await sync_to_async(tick)()
+    except TradeError as error:
+        return JSON({"detail": str(error)}, status_code=error.status)
