@@ -150,7 +150,26 @@ class StopProtectionTests(TestCase):
         self.buy("AAPL", 2)
         self.set_price("AAPL", "300.00")
         self.assertEqual(Holding.objects.get().quantity, 2)
+        self.assertEqual(Holding.objects.get().profit_level, 0)  # nothing sold, still open
         self.assertEqual(Order.objects.count(), 1)
+
+    def test_profit_level_skipped_for_size_fires_after_the_position_grows(self):
+        self.buy("AAPL", 2)
+        self.set_price("AAPL", "300.00")  # +31.9%, but 30% of 2 shares rounds to 0
+        self.buy("AAPL", 8)  # avg 285.50
+        self.set_price("AAPL", "330.00")  # +15.6% on the new average
+        self.assertEqual(Holding.objects.get().quantity, 7)
+        self.assertEqual(Order.objects.filter(trigger="profit_take").count(), 1)
+
+    def test_buying_never_triggers_profit_takes_they_wait_for_a_price_move(self):
+        self.set_price("MSFT", "100.00")
+        self.buy("MSFT", 3)
+        self.set_price("MSFT", "200.00")  # +100%, but 30% of 3 shares rounds to 0
+        self.buy("MSFT", 1)
+        self.assertEqual(Holding.objects.get().quantity, 4)
+        self.assertFalse(Order.objects.filter(trigger="profit_take").exists())
+        self.set_price("MSFT", "200.00")  # the next price move takes 1, then 1
+        self.assertEqual(Holding.objects.get().quantity, 2)
 
     def test_profit_levels_reset_after_the_position_closes(self):
         self.buy("TSLA", 10)
