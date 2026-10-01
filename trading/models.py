@@ -24,6 +24,8 @@ class Quote(models.Model):
     stop_move = models.PositiveIntegerField(null=True, blank=True)
     reentry_limit = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     reentry_move = models.PositiveIntegerField(null=True, blank=True)
+    # Recent prices (as strings) for the market-regime average; kept for QQQ only.
+    history = models.JSONField(default=list, blank=True)
 
 
 class Holding(models.Model):

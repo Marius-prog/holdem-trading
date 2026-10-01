@@ -429,6 +429,48 @@ class StopProtectionTests(TestCase):
         self.set_price("AAPL", "209.00")
         self.assertEqual(Holding.objects.get().quantity, 10)
 
+    def market(self):
+        return self.client.get("/api/state").json()["market"]
+
+    def test_qqq_starts_bullish_and_is_not_tradable(self):
+        self.assertEqual(
+            self.market(),
+            {"symbol": "QQQ", "price": "480.00", "average": "480.00", "bearish": False},
+        )
+        order = {"symbol": "QQQ", "side": "buy", "quantity": 1, "client_order_id": str(uuid4())}
+        response = self.client.post("/api/orders", json=order, headers=HEADERS)
+        self.assertEqual(response.status_code, 400)
+        quotes = self.client.get("/api/state").json()["quotes"]
+        self.assertNotIn("QQQ", [q["symbol"] for q in quotes])
+
+    def test_qqq_below_its_average_is_bearish(self):
+        self.assertEqual(self.set_price("QQQ", "470.00").status_code, 200)
+        market = self.market()  # average of 480 and 470
+        self.assertEqual((market["average"], market["bearish"]), ("475.00", True))
+        self.set_price("QQQ", "500.00")  # average 483.33
+        self.assertFalse(self.market()["bearish"])
+
+    def test_qqq_average_covers_its_last_20_prices(self):
+        for _ in range(20):
+            self.set_price("QQQ", "100.00")
+        self.assertEqual(self.market()["average"], "100.00")  # the 480 seed dropped out
+        self.set_price("QQQ", "99.00")
+        self.assertEqual((self.market()["average"], self.market()["bearish"]), ("99.95", True))
+
+    def test_bearish_market_pauses_ladder_buys(self):
+        self.buy("AAPL", 10)
+        self.set_price("QQQ", "470.00")  # bearish
+        self.set_price("AAPL", "211.59")
+        self.assertEqual(self.ladder_buys(), [])
+        self.set_price("QQQ", "500.00")  # bullish again
+        self.set_price("AAPL", "211.59")
+        self.assertEqual(self.ladder_buys(), [(10, "211.59")])
+
+    def test_tick_moves_qqq_too(self):
+        with patch("trading.services.random.randint", return_value=300):
+            self.client.post("/api/tick", headers=HEADERS)
+        self.assertEqual(self.market()["price"], "494.40")
+
     def test_set_price_requires_header_and_rejects_invalid_input(self):
         self.buy()
         before = get_state()
