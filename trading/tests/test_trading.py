@@ -38,7 +38,7 @@ class TradingTests(TestCase):
                 "total_value": "100000.00",
             },
         )
-        self.assertEqual(len(data["quotes"]), 7)
+        self.assertEqual(len(data["quotes"]), 8)
         self.assertEqual(data["holdings"], [])
         self.assertEqual(data["orders"], [])
 

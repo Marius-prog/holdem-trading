@@ -84,6 +84,11 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   that buys again 7 changes later. The kill switch pauses DCA buys, and **Stop
   SPY DCA** ends them while keeping the position. Buys show as DCA buy or DCA
   burst.
+- GLD sleeve: GLD ($400.00) runs the same dollar-cost averaging with its own
+  settings: **Start GLD DCA** buys 2 shares at once and 2 more every 7 GLD price
+  changes, up to 37 shares or a $15,000 position value, with the same stops,
+  burst, restart and kill-switch rules. Each plan counts its own symbol's
+  changes.
 - Market regime: QQQ is a market index you cannot trade. It starts at $480.00,
   moves with every Next tick (before the quotes, so their rules see the new
   regime), and can be set in the Set price form. It keeps its
@@ -127,7 +132,7 @@ PAPER_TRADING_DB=/tmp/paperdesk-demo.sqlite3 uv run python manage.py runbolt --h
 | `POST /api/orders` | Submit or replay a paper order |
 | `POST /api/quotes` | Set one symbol's (or QQQ's) price, apply the rules, return the new state |
 | `POST /api/tick` | Move every price by up to 3%, apply stops, return the new state |
-| `POST /api/dca` | `{"enabled": true}` starts SPY DCA (buying now if due); `false` stops it |
+| `POST /api/dca` | `{"symbol": "SPY" or "GLD", "enabled": true}` starts that plan (buying now if due); `false` stops it |
 | `POST /api/kill-switch/reset` | While buys are halted, restart the equity peak at the current value |
 
 Money is returned as decimal strings. Order and price writes require the
