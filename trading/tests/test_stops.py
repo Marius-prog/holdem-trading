@@ -192,6 +192,27 @@ class StopProtectionTests(TestCase):
         self.assertFalse(self.client.get("/api/state").json()["risk"]["buys_halted"])
         self.buy("MSFT", 1)
 
+    def test_kill_switch_lifts_when_a_stop_closes_the_last_position(self):
+        self.buy("AAPL", 439)  # 99,881.28
+        self.set_price("AAPL", "190.00")  # equity 83,528.72: halted
+        self.assertTrue(self.client.get("/api/state").json()["risk"]["buys_halted"])
+        state = self.set_price("AAPL", "170.00").json()  # the hard stop sells all 439
+        self.assertEqual(state["holdings"], [])
+        self.assertEqual(state["risk"]["equity_peak"], "74748.72")
+        self.assertFalse(state["risk"]["buys_halted"])
+        self.buy("MSFT", 1)
+
+    def test_kill_switch_lifts_when_a_manual_sell_closes_the_last_position(self):
+        self.buy("AAPL", 100)
+        Account.objects.filter(pk=1).update(equity_peak=Decimal("120000.00"))
+        sell = {"symbol": "AAPL", "side": "sell", "quantity": 100, "client_order_id": str(uuid4())}
+        self.assertEqual(
+            self.client.post("/api/orders", json=sell, headers=HEADERS).status_code, 200
+        )
+        risk = self.client.get("/api/state").json()["risk"]
+        self.assertEqual((risk["equity_peak"], risk["buys_halted"]), ("100000.00", False))
+        self.buy("MSFT", 1)
+
     def test_set_price_requires_header_and_rejects_invalid_input(self):
         self.buy()
         before = get_state()

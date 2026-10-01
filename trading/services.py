@@ -79,10 +79,12 @@ def halt_below(account: Account) -> Decimal:
 
 
 def record_equity_peak() -> None:
+    """Raise the peak to current equity. A flat account restarts it at its cash, so a
+    halt cannot outlive the positions that caused it."""
     account, _ = Account.objects.get_or_create(pk=1)
     # ponytail: capped like cash so SQLite keeps it exact; the switch is moot at that size.
     peak = min(equity(account, load_prices()), MAX_CASH)
-    if peak > account.equity_peak:
+    if peak > account.equity_peak or not Holding.objects.exists():
         account.equity_peak = peak
         account.save(update_fields=["equity_peak"])
 
@@ -179,6 +181,7 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
             raise TradeError("This order ID was already used for a different order.", 409)
         return order_data(existing)
 
+    record_equity_peak()
     account, _ = Account.objects.get_or_create(pk=1)
     holding = Holding.objects.filter(symbol=symbol).first()
     prices = load_prices()
@@ -186,7 +189,9 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
     if side == "sell":
         if not holding or quantity > holding.quantity:
             raise TradeError("Insufficient shares to sell; short selling is not supported.")
-        return order_data(sell(account, holding, quantity, price, client_order_id))
+        order = sell(account, holding, quantity, price, client_order_id)
+        record_equity_peak()
+        return order_data(order)
 
     if equity(account, prices) < halt_below(account):
         raise TradeError(

@@ -123,7 +123,7 @@
     $('total-value').textContent = currency(state.account.total_value);
     $('cash').textContent = currency(state.account.cash);
     $('kill-switch').hidden = !state.risk.buys_halted;
-    $('kill-switch').textContent = `Kill switch on: portfolio value is more than 15% below its ${currency(state.risk.equity_peak)} peak. New buys are paused until it is back to ${currency(state.risk.halt_below)}. Sells and stops still work.`;
+    $('kill-switch').textContent = `Kill switch on: portfolio value is more than 15% below its ${currency(state.risk.equity_peak)} peak. New buys are paused until it is back to ${currency(state.risk.halt_below)} or every position is closed. Sells and stops still work.`;
     $('holdings-value').textContent = currency(state.account.holdings_value);
     $('position-count').textContent = `${state.holdings.length} open position${state.holdings.length === 1 ? '' : 's'}`;
     $('positions-tag').textContent = `${state.holdings.length} ASSET${state.holdings.length === 1 ? '' : 'S'}`;
