@@ -31,6 +31,21 @@ TRAIL = Decimal("0.12")
 # shares), rounded down. 3/7 of what is left after the first take is another 30% of the
 # position, leaving 40% to ride the trailing stop.
 PROFIT_TAKES = ((Decimal("0.15"), 3, 10), (Decimal("0.25"), 3, 7))
+# Ladder buys: (drop below the position's entry price, shares) by volatility tier,
+# bought in order on price drops. Each buy shrinks to fit the per-symbol cost cap
+# and the cash on hand.
+LOW_VOL = ((Decimal("0.07"), 10), (Decimal("0.14"), 15), (Decimal("0.21"), 15))
+MEDIUM_VOL = ((Decimal("0.10"), 10), (Decimal("0.20"), 15), (Decimal("0.30"), 15))
+HIGH_VOL = ((Decimal("0.15"), 10), (Decimal("0.25"), 15), (Decimal("0.35"), 15))
+LADDERS = {
+    "AAPL": LOW_VOL,
+    "MSFT": LOW_VOL,
+    "GOOGL": LOW_VOL,
+    "AMZN": MEDIUM_VOL,
+    "NVDA": MEDIUM_VOL,
+    "TSLA": HIGH_VOL,
+}
+LADDER_COST_CAP = Decimal("14000.00")
 # Kill switch: new buys are refused while equity is more than 15% below its peak.
 KILL_SWITCH_DRAWDOWN = Decimal("0.15")
 
@@ -170,6 +185,39 @@ def sell(
     )
 
 
+def buy(
+    account: Account,
+    holding: Holding | None,
+    symbol: str,
+    quantity: int,
+    price: Decimal,
+    client_order_id: UUID,
+    trigger: str = "",
+) -> Order:
+    total = price * quantity
+    account.cash -= total
+    account.save(update_fields=["cash"])
+    if holding:
+        cost = holding.average_cost * holding.quantity + total
+        holding.quantity += quantity
+        holding.average_cost = (cost / holding.quantity).quantize(CENT)
+        holding.trail_peak = None  # Added shares restart at the hard stop on the new average.
+        holding.save(update_fields=["quantity", "average_cost", "trail_peak"])
+    else:
+        Holding.objects.create(
+            symbol=symbol, quantity=quantity, average_cost=price, entry_price=price
+        )
+    return Order.objects.create(
+        client_order_id=client_order_id,
+        symbol=symbol,
+        side="buy",
+        quantity=quantity,
+        price=price,
+        total=total,
+        trigger=trigger,
+    )
+
+
 @transaction.atomic
 def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) -> dict:
     if symbol not in QUOTES:
@@ -200,38 +248,39 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
             f"${account.equity_peak:,} peak. Buys resume at ${halt_below(account):,}, "
             f"or after you reset the kill switch."
         )
-    total = price * quantity
-    if total > account.cash:
+    if price * quantity > account.cash:
         raise TradeError("Insufficient paper cash for this order.")
-    account.cash -= total
-    account.save(update_fields=["cash"])
+    order = buy(account, holding, symbol, quantity, price, client_order_id)
     if holding:
-        cost = holding.average_cost * holding.quantity + total
-        holding.quantity += quantity
-        holding.average_cost = (cost / holding.quantity).quantize(CENT)
-        holding.trail_peak = None  # Added shares restart at the hard stop on the new average.
-        holding.save(update_fields=["quantity", "average_cost", "trail_peak"])
-    else:
-        Holding.objects.create(symbol=symbol, quantity=quantity, average_cost=price)
-    order = Order.objects.create(
-        client_order_id=client_order_id,
-        symbol=symbol,
-        side=side,
-        quantity=quantity,
-        price=price,
-        total=total,
-    )
-    if holding:
-        # Re-upgrades at once if already 7% above the new average; takes wait for a price move.
-        apply_rules(symbol, price, take_profit=False)
+        # Re-upgrades at once if already 7% above the new average. Ladders and profit
+        # takes wait for a price move.
+        apply_rules(symbol, price, stops_only=True)
     return order_data(order)
 
 
-def apply_rules(symbol: str, price: Decimal, take_profit: bool = True) -> None:
-    """Upgrade or ratchet the stop at the new price, sell everything if it is hit,
-    otherwise take any profit level reached.
+def buy_ladder(account: Account, holding: Holding, price: Decimal) -> None:
+    """Buy each ladder level the price has dropped to, in order. A level that would buy
+    nothing (cost cap, cash, or the kill switch) stays open with the ones after it."""
+    if equity(account, load_prices()) < halt_below(account):
+        return
+    entry = holding.entry_price or holding.average_cost
+    for level, (drop, shares) in enumerate(LADDERS[holding.symbol], start=1):
+        if holding.ladder_level >= level:
+            continue
+        room = LADDER_COST_CAP - holding.average_cost * holding.quantity
+        shares = min(shares, int(max(room, 0) // price), int(account.cash // price))
+        if price > entry * (1 - drop) or not shares:
+            break
+        holding.ladder_level = level
+        holding.save(update_fields=["ladder_level"])
+        buy(account, holding, holding.symbol, shares, price, uuid4(), "ladder")
 
-    Automatic sells fill at the new price, so a gap below the stop fills below it.
+
+def apply_rules(symbol: str, price: Decimal, stops_only: bool = False) -> None:
+    """Upgrade or ratchet the stop at the new price and sell everything if it is hit.
+    Otherwise buy any ladder level and take any profit level reached.
+
+    Automatic orders fill at the new price, so a gap below the stop fills below it.
     """
     holding = Holding.objects.filter(symbol=symbol).first()
     if not holding:
@@ -248,8 +297,9 @@ def apply_rules(symbol: str, price: Decimal, take_profit: bool = True) -> None:
         trigger = "hard_stop" if holding.trail_peak is None else "trailing_stop"
         sell(account, holding, holding.quantity, price, uuid4(), trigger)
         return
-    if not take_profit:
+    if stops_only:
         return
+    buy_ladder(account, holding, price)
     for level, (gain, numerator, denominator) in enumerate(PROFIT_TAKES, start=1):
         if holding.profit_level >= level:
             continue

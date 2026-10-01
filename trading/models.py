@@ -27,6 +27,10 @@ class Holding(models.Model):
     trail_peak = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     # Profit-taking levels that sold shares (0-2); resets when the position closes.
     profit_level = models.PositiveSmallIntegerField(default=0)
+    # First fill price of the position (ladder levels count down from it) and the
+    # ladder levels already bought. Null entry: positions opened before ladders.
+    entry_price = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    ladder_level = models.PositiveSmallIntegerField(default=0)
 
 
 class Order(models.Model):
@@ -36,7 +40,8 @@ class Order(models.Model):
     quantity = models.PositiveIntegerField()
     price = models.DecimalField(max_digits=12, decimal_places=2)
     total = models.DecimalField(max_digits=18, decimal_places=2)
-    # "" for manual orders; "hard_stop", "trailing_stop" or "profit_take" for automatic sells.
+    # "" for manual orders; "hard_stop", "trailing_stop" or "profit_take" for automatic
+    # sells; "ladder" for automatic buys.
     trigger = models.CharField(max_length=13, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
