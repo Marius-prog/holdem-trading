@@ -25,7 +25,7 @@ class Holding(models.Model):
     average_cost = models.DecimalField(max_digits=12, decimal_places=2)
     # Highest price since the trailing stop took over; null while the hard stop applies.
     trail_peak = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
-    # Profit-taking levels already taken (0-2); resets when the position closes.
+    # Profit-taking levels that sold shares (0-2); resets when the position closes.
     profit_level = models.PositiveSmallIntegerField(default=0)
 
 

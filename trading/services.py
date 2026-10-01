@@ -249,12 +249,14 @@ def apply_rules(symbol: str, price: Decimal) -> None:
         sell(account, holding, holding.quantity, price, uuid4(), trigger)
         return
     for level, (gain, numerator, denominator) in enumerate(PROFIT_TAKES, start=1):
-        if holding.profit_level >= level or price < holding.average_cost * (1 + gain):
+        if holding.profit_level >= level:
             continue
+        shares = holding.quantity * numerator // denominator
+        if price < holding.average_cost * (1 + gain) or not shares:
+            break  # Levels go in order; one that would sell nothing stays open.
         holding.profit_level = level
         holding.save(update_fields=["profit_level"])
-        if shares := holding.quantity * numerator // denominator:
-            sell(account, holding, shares, price, uuid4(), "profit_take")
+        sell(account, holding, shares, price, uuid4(), "profit_take")
 
 
 def parse_price(raw: str) -> Decimal:
