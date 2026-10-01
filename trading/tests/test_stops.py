@@ -6,7 +6,7 @@ from django.test import TestCase
 from django_bolt.testing import TestClient
 
 from trading.api import api
-from trading.models import Account, Holding, Order
+from trading.models import Account, Holding, Order, Quote
 from trading.services import MAX_CASH, get_state
 
 HEADERS = {"X-Paper-Trade": "1"}
@@ -347,6 +347,87 @@ class StopProtectionTests(TestCase):
         self.buy("AAPL", 10)  # new entry 150.00
         self.set_price("AAPL", "139.50")  # 150 x 0.93
         self.assertEqual(self.ladder_buys()[-1], (10, "139.50"))
+
+    def reentry_limit(self, symbol="AAPL"):
+        state = self.client.get("/api/state").json()
+        return next(q["reentry_limit"] for q in state["quotes"] if q["symbol"] == symbol)
+
+    def stop_out_and_place_reentry(self):
+        self.buy("AAPL", 10)
+        self.set_price("AAPL", "150.00")  # hard stop sells all 10 (change 1)
+        self.set_price("AAPL", "220.00")  # above the 10-change EMA: limit at 5% below
+        self.assertEqual(self.reentry_limit(), "209.00")
+
+    def test_reentry_buys_10_at_the_limit_after_a_stop_out(self):
+        self.stop_out_and_place_reentry()
+        self.set_price("AAPL", "210.00")  # above the limit: still pending
+        self.assertFalse(Holding.objects.exists())
+        state = self.set_price("AAPL", "209.00").json()
+        order = state["orders"][0]
+        self.assertEqual(
+            (order["trigger"], order["side"], order["quantity"], order["price"]),
+            ("reentry", "buy", 10, "209.00"),
+        )
+        self.assertEqual(Holding.objects.get().entry_price, Decimal("209.00"))
+        self.assertIsNone(self.reentry_limit())
+
+    def test_reentry_waits_until_price_is_above_its_ema(self):
+        self.buy("AAPL", 10)
+        self.set_price("AAPL", "150.00")  # stop-out; EMA 213.43
+        self.set_price("AAPL", "160.00")  # EMA 203.71: below it, nothing placed
+        self.assertIsNone(self.reentry_limit())
+        self.set_price("AAPL", "230.00")  # EMA 208.49
+        self.assertEqual(self.reentry_limit(), "218.50")
+
+    def test_reentry_waits_one_price_change_after_the_stop_out(self):
+        self.buy("AAPL", 10)
+        Quote.objects.filter(symbol="AAPL").update(ema=Decimal("100.0000"))
+        self.set_price("AAPL", "150.00")  # stop-out; price is above the EMA already
+        self.assertIsNone(self.reentry_limit())
+        self.set_price("AAPL", "150.00")
+        self.assertEqual(self.reentry_limit(), "142.50")
+
+    def test_unfilled_reentry_expires_after_5_changes_and_reprices(self):
+        self.stop_out_and_place_reentry()  # placed on change 2
+        for _ in range(5):  # changes 3-7
+            self.set_price("AAPL", "220.00")
+        self.assertEqual(self.reentry_limit(), "209.00")
+        self.set_price("AAPL", "230.00")  # change 8: expired, re-priced
+        self.assertEqual(self.reentry_limit(), "218.50")
+
+    def test_kill_switch_cancels_pending_reentry_until_reset(self):
+        self.stop_out_and_place_reentry()
+        Account.objects.filter(pk=1).update(equity_peak=Decimal("200000.00"))
+        self.set_price("AAPL", "215.00")
+        self.assertIsNone(self.reentry_limit())
+        self.client.post("/api/kill-switch/reset", headers=HEADERS)
+        self.set_price("AAPL", "220.00")
+        self.assertEqual(self.reentry_limit(), "209.00")
+
+    def test_manual_buy_cancels_pending_reentry(self):
+        self.stop_out_and_place_reentry()
+        self.buy("AAPL", 1)
+        self.assertIsNone(self.reentry_limit())
+        self.set_price("AAPL", "209.00")
+        self.assertEqual(Holding.objects.get().quantity, 1)
+        self.assertFalse(Order.objects.filter(trigger="reentry").exists())
+
+    def test_manual_sell_is_not_a_stop_out(self):
+        self.buy("AAPL", 10)
+        sell = {"symbol": "AAPL", "side": "sell", "quantity": 10, "client_order_id": str(uuid4())}
+        self.client.post("/api/orders", json=sell, headers=HEADERS)
+        self.set_price("AAPL", "230.00")
+        self.set_price("AAPL", "240.00")
+        self.assertIsNone(self.reentry_limit())
+
+    def test_reentry_waits_for_cash(self):
+        self.stop_out_and_place_reentry()
+        Account.objects.filter(pk=1).update(cash=Decimal("100.00"), equity_peak=Decimal("100.00"))
+        self.set_price("AAPL", "209.00")  # no cash for a share: stays pending
+        self.assertEqual(self.reentry_limit(), "209.00")
+        Account.objects.filter(pk=1).update(cash=Decimal("5000.00"))
+        self.set_price("AAPL", "209.00")
+        self.assertEqual(Holding.objects.get().quantity, 10)
 
     def test_set_price_requires_header_and_rejects_invalid_input(self):
         self.buy()
