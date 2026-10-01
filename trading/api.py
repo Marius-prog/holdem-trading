@@ -1,3 +1,4 @@
+from datetime import date
 from typing import Annotated
 from uuid import UUID
 
@@ -9,6 +10,7 @@ from django_bolt import JSON, BoltAPI, Request
 from django_bolt.param_functions import Header
 from django_bolt.shortcuts import render
 
+from .copytrader import record_filing
 from .services import (
     TradeError,
     get_state,
@@ -52,6 +54,14 @@ class PriceRequest(msgspec.Struct, forbid_unknown_fields=True):
     price: str
 
 
+class FilingRequest(msgspec.Struct, forbid_unknown_fields=True):
+    filer: str
+    symbol: str
+    side: str
+    bucket: int
+    traded_on: date
+
+
 class DcaRequest(msgspec.Struct, forbid_unknown_fields=True):
     symbol: str
     enabled: bool
@@ -93,6 +103,20 @@ async def update_quote(
         return refused
     try:
         return await sync_to_async(set_price)(quote.symbol, quote.price)
+    except TradeError as error:
+        return JSON({"detail": str(error)}, status_code=error.status)
+
+
+@api.post("/api/filings")
+async def create_filing(
+    filing: FilingRequest, paper_trade: PaperTradeHeader = "", host: HostHeader = ""
+):
+    if refused := refuse_write(host, paper_trade):
+        return refused
+    try:
+        return await sync_to_async(record_filing)(
+            filing.filer, filing.symbol, filing.side, filing.bucket, filing.traded_on
+        )
     except TradeError as error:
         return JSON({"detail": str(error)}, status_code=error.status)
 
