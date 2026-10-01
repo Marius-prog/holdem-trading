@@ -1,10 +1,12 @@
-from decimal import Decimal
-from uuid import UUID
+import random
+from decimal import Decimal, InvalidOperation
+from uuid import UUID, uuid4
 
 from django.db import transaction
 
-from .models import Account, Holding, Order
+from .models import Account, Holding, Order, Quote
 
+# Starting prices. Current prices live in Quote and move via set_price and tick.
 QUOTES = {
     "AAPL": ("Apple", Decimal("227.52")),
     "MSFT": ("Microsoft", Decimal("428.76")),
@@ -14,6 +16,15 @@ QUOTES = {
     "TSLA": ("Tesla", Decimal("258.02")),
 }
 MAX_QUANTITY = 1_000_000
+CENT = Decimal("0.01")
+MAX_PRICE = Decimal("1000000.00")
+MAX_TICK_BPS = 300  # A random tick moves each price by at most 3% either way.
+
+# Stop protection: a hard stop below average cost, upgraded to a trailing stop
+# once the position gains enough. The trailing stop only ratchets up.
+HARD_STOP = Decimal("0.25")
+TRAIL_UPGRADE = Decimal("0.07")
+TRAIL = Decimal("0.12")
 
 
 class TradeError(ValueError):
@@ -35,17 +46,34 @@ def order_data(order: Order) -> dict:
         "quantity": order.quantity,
         "price": money(order.price),
         "total": money(order.total),
+        "trigger": order.trigger,
         "created_at": order.created_at.isoformat(),
     }
+
+
+def load_prices() -> dict[str, Decimal]:
+    prices = dict(Quote.objects.values_list("symbol", "price"))
+    missing = [Quote(symbol=s, price=p) for s, (_, p) in QUOTES.items() if s not in prices]
+    if missing:
+        Quote.objects.bulk_create(missing)
+        prices |= {quote.symbol: quote.price for quote in missing}
+    return prices
+
+
+def stop_price(holding: Holding) -> Decimal:
+    if holding.trail_peak is None:
+        return (holding.average_cost * (1 - HARD_STOP)).quantize(CENT)
+    return (holding.trail_peak * (1 - TRAIL)).quantize(CENT)
 
 
 @transaction.atomic
 def get_state() -> dict:
     account, _ = Account.objects.get_or_create(pk=1)
+    prices = load_prices()
     holdings = []
     holdings_value = Decimal("0.00")
     for holding in Holding.objects.order_by("symbol"):
-        price = QUOTES[holding.symbol][1]
+        price = prices[holding.symbol]
         market_value = price * holding.quantity
         holdings_value += market_value
         holdings.append(
@@ -56,6 +84,8 @@ def get_state() -> dict:
                 "price": money(price),
                 "market_value": money(market_value),
                 "unrealized_pnl": money((price - holding.average_cost) * holding.quantity),
+                "stop_price": money(stop_price(holding)),
+                "stop_type": "hard" if holding.trail_peak is None else "trailing",
             }
         )
     return {
@@ -65,12 +95,39 @@ def get_state() -> dict:
             "total_value": money(account.cash + holdings_value),
         },
         "quotes": [
-            {"symbol": symbol, "name": name, "price": money(price)}
-            for symbol, (name, price) in QUOTES.items()
+            {"symbol": symbol, "name": name, "price": money(prices[symbol])}
+            for symbol, (name, _) in QUOTES.items()
         ],
         "holdings": holdings,
         "orders": [order_data(order) for order in Order.objects.all()[:100]],
     }
+
+
+def sell(
+    account: Account,
+    holding: Holding,
+    quantity: int,
+    price: Decimal,
+    client_order_id: UUID,
+    trigger: str = "",
+) -> Order:
+    total = price * quantity
+    account.cash += total
+    account.save(update_fields=["cash"])
+    holding.quantity -= quantity
+    if holding.quantity:
+        holding.save(update_fields=["quantity"])
+    else:
+        holding.delete()
+    return Order.objects.create(
+        client_order_id=client_order_id,
+        symbol=holding.symbol,
+        side="sell",
+        quantity=quantity,
+        price=price,
+        total=total,
+        trigger=trigger,
+    )
 
 
 @transaction.atomic
@@ -90,28 +147,24 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
 
     account, _ = Account.objects.get_or_create(pk=1)
     holding = Holding.objects.filter(symbol=symbol).first()
-    price = QUOTES[symbol][1]
-    total = price * quantity
-    if side == "buy":
-        if total > account.cash:
-            raise TradeError("Insufficient paper cash for this order.")
-        account.cash -= total
-        if holding:
-            # Quotes are fixed; every fill for this symbol has the same cost.
-            holding.quantity += quantity
-            holding.save(update_fields=["quantity"])
-        else:
-            Holding.objects.create(symbol=symbol, quantity=quantity, average_cost=price)
-    else:
+    price = load_prices()[symbol]
+    if side == "sell":
         if not holding or quantity > holding.quantity:
             raise TradeError("Insufficient shares to sell; short selling is not supported.")
-        account.cash += total
-        holding.quantity -= quantity
-        if holding.quantity:
-            holding.save(update_fields=["quantity"])
-        else:
-            holding.delete()
+        return order_data(sell(account, holding, quantity, price, client_order_id))
+
+    total = price * quantity
+    if total > account.cash:
+        raise TradeError("Insufficient paper cash for this order.")
+    account.cash -= total
     account.save(update_fields=["cash"])
+    if holding:
+        cost = holding.average_cost * holding.quantity + total
+        holding.quantity += quantity
+        holding.average_cost = (cost / holding.quantity).quantize(CENT)
+        holding.save(update_fields=["quantity", "average_cost"])
+    else:
+        Holding.objects.create(symbol=symbol, quantity=quantity, average_cost=price)
     order = Order.objects.create(
         client_order_id=client_order_id,
         symbol=symbol,
@@ -121,3 +174,58 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
         total=total,
     )
     return order_data(order)
+
+
+def apply_stop(symbol: str, price: Decimal) -> None:
+    """Upgrade or ratchet the stop at the new price, then sell everything if it is hit.
+
+    Stop sells fill at the new price, so a gap below the stop fills below it.
+    """
+    holding = Holding.objects.filter(symbol=symbol).first()
+    if not holding:
+        return
+    if holding.trail_peak is None:
+        raise_stop_at = holding.average_cost * (1 + TRAIL_UPGRADE)
+    else:
+        raise_stop_at = holding.trail_peak
+    if price >= raise_stop_at:
+        holding.trail_peak = price
+        holding.save(update_fields=["trail_peak"])
+    if price <= stop_price(holding):
+        trigger = "hard_stop" if holding.trail_peak is None else "trailing_stop"
+        account, _ = Account.objects.get_or_create(pk=1)
+        sell(account, holding, holding.quantity, price, uuid4(), trigger)
+
+
+def parse_price(raw: str) -> Decimal:
+    error = TradeError(f"Price must be from $0.01 to ${MAX_PRICE:,} in whole cents.")
+    try:
+        price = Decimal(raw)
+    except InvalidOperation:
+        raise error from None
+    if not price.is_finite() or not CENT <= price <= MAX_PRICE or price != price.quantize(CENT):
+        raise error
+    return price.quantize(CENT)
+
+
+def move_price(symbol: str, price: Decimal) -> None:
+    Quote.objects.filter(symbol=symbol).update(price=price)
+    apply_stop(symbol, price)
+
+
+@transaction.atomic
+def set_price(symbol: str, raw_price: str) -> dict:
+    if symbol not in QUOTES:
+        raise TradeError("Choose a supported symbol.")
+    price = parse_price(raw_price)
+    load_prices()
+    move_price(symbol, price)
+    return get_state()
+
+
+@transaction.atomic
+def tick() -> dict:
+    for symbol, price in load_prices().items():
+        step = Decimal(random.randint(-MAX_TICK_BPS, MAX_TICK_BPS)) / 10_000
+        move_price(symbol, min(MAX_PRICE, max(CENT, (price * (1 + step)).quantize(CENT))))
+    return get_state()
