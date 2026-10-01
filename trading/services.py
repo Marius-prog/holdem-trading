@@ -18,7 +18,7 @@ QUOTES = {
 MAX_QUANTITY = 1_000_000
 CENT = Decimal("0.01")
 MAX_PRICE = Decimal("1000000.00")
-MAX_TICK_BPS = 300  # A random tick moves each price by at most 3% either way.
+MAX_TICK_BPS = 300  # Random tick step: up to 3% either way (at least a cent if nonzero).
 # SQLite stores decimals as REAL (~15 significant digits); this keeps cash exact to the cent.
 MAX_CASH = Decimal("1000000000000.00")
 
@@ -230,6 +230,9 @@ def set_price(symbol: str, raw_price: str) -> dict:
 @transaction.atomic
 def tick() -> dict:
     for symbol, price in load_prices().items():
-        step = Decimal(random.randint(-MAX_TICK_BPS, MAX_TICK_BPS)) / 10_000
-        move_price(symbol, min(MAX_PRICE, max(CENT, (price * (1 + step)).quantize(CENT))))
+        bps = random.randint(-MAX_TICK_BPS, MAX_TICK_BPS)
+        moved = (price * (1 + Decimal(bps) / 10_000)).quantize(CENT)
+        if bps and moved == price:
+            moved += CENT if bps > 0 else -CENT  # small prices still move by a cent
+        move_price(symbol, min(MAX_PRICE, max(CENT, moved)))
     return get_state()
