@@ -70,8 +70,9 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   gap through several buys them all, and each fires once per position (reset on
   close). A ladder buy shrinks to keep the position's cost basis within
   $14,000 and to the cash on hand; a level that would buy nothing stays open.
-  The stop is checked first, ladders pause while the kill switch is on, and they
-  run only on price changes, never inside a manual buy. These buys show as
+  The stop is checked first, ladders wait while the price is at or above the
+  average cost or while the kill switch is on, and they run only on price
+  changes, never inside a manual buy. These buys show as
   Ladder buy.
 - Kill switch: the account tracks its highest portfolio value after each price
   change. While the value is more than 15% below that peak, new buys are refused

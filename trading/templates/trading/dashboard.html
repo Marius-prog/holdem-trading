@@ -173,7 +173,7 @@
       if (!response.ok) { status(typeof result.detail === 'string' ? result.detail : 'Enter a price in whole cents.', true, 'price-status'); return; }
       state = result; render();
       const fills = state.orders.filter(order => order.trigger && !seen.has(order.id)).reverse();
-      status(fills.length ? fills.map(order => `${TRIGGER_LABELS[order.trigger]}: ${order.quantity} ${order.symbol} at ${currency(order.price)}.`).join(' ') : 'Prices updated. No automatic sales.', false, 'price-status');
+      status(fills.length ? fills.map(order => `${TRIGGER_LABELS[order.trigger]}: ${order.quantity} ${order.symbol} at ${currency(order.price)}.`).join(' ') : 'Prices updated. No automatic orders.', false, 'price-status');
     } catch {
       status('Prices not confirmed. Select Refresh to see current prices.', true, 'price-status');
     } finally { moving = false; setControls(); }

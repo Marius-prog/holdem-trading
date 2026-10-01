@@ -260,8 +260,9 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
 
 def buy_ladder(account: Account, holding: Holding, price: Decimal) -> None:
     """Buy each ladder level the price has dropped to, in order. A level that would buy
-    nothing (cost cap, cash, or the kill switch) stays open with the ones after it."""
-    if equity(account, load_prices()) < halt_below(account):
+    nothing (cost cap, cash, or the kill switch) stays open with the ones after it.
+    Ladders average down, so they wait while the price is at or above average cost."""
+    if price >= holding.average_cost or equity(account, load_prices()) < halt_below(account):
         return
     entry = holding.entry_price or holding.average_cost
     for level, (drop, shares) in enumerate(LADDERS[holding.symbol], start=1):

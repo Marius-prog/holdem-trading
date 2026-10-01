@@ -46,13 +46,14 @@ class StopProtectionTests(TestCase):
 
     def test_price_above_stop_moves_value_and_keeps_position(self):
         self.buy()
-        response = self.set_price("AAPL", "215.00")  # -5.5%: above stop and ladder
+        Holding.objects.update(ladder_level=3)  # ladder used up, so only the stop applies
+        response = self.set_price("AAPL", "171.00")  # 1 cent above the 170.64 stop
         self.assertEqual(response.status_code, 200, response.text)
         state = response.json()
         quote = next(item for item in state["quotes"] if item["symbol"] == "AAPL")
-        self.assertEqual(quote["price"], "215.00")
-        self.assertEqual(state["holdings"][0]["market_value"], "430.00")
-        self.assertEqual(state["holdings"][0]["unrealized_pnl"], "-25.04")
+        self.assertEqual(quote["price"], "171.00")
+        self.assertEqual(state["holdings"][0]["market_value"], "342.00")
+        self.assertEqual(state["holdings"][0]["unrealized_pnl"], "-113.04")
         self.assertEqual(Order.objects.count(), 1)
 
     def test_hard_stop_sells_whole_position_at_current_price_on_gap(self):
@@ -305,6 +306,18 @@ class StopProtectionTests(TestCase):
         self.set_price("TSLA", "190.00")
         self.assertFalse(Holding.objects.exists())
         self.assertEqual(self.ladder_buys(), [])
+
+    def test_ladder_waits_while_price_is_above_average_cost(self):
+        self.client.get("/api/state")  # seed quotes
+        Holding.objects.create(
+            symbol="AAPL",
+            quantity=200,
+            average_cost=Decimal("60.00"),
+            entry_price=Decimal("100.00"),
+        )
+        self.set_price("AAPL", "85.00")  # -15% from entry but +41.7% on the average
+        self.assertEqual(self.ladder_buys(), [])
+        self.assertEqual(Order.objects.filter(trigger="profit_take").count(), 2)
 
     def test_ladders_pause_while_kill_switch_is_on(self):
         self.buy("AAPL", 10)
