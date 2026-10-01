@@ -3,6 +3,7 @@ from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from uuid import UUID, uuid4
 
 from django.db import transaction
+from django.db.models import F
 
 from .models import Account, Holding, Order, Quote
 
@@ -32,8 +33,8 @@ TRAIL = Decimal("0.12")
 # position, leaving 40% to ride the trailing stop.
 PROFIT_TAKES = ((Decimal("0.15"), 3, 10), (Decimal("0.25"), 3, 7))
 # Ladder buys: (drop below the position's entry price, shares) by volatility tier,
-# bought in order on price drops. Each buy shrinks to fit the per-symbol cost cap
-# and the cash on hand.
+# bought in order on price drops. Each automatic buy shrinks to fit the per-symbol
+# cost cap and the cash on hand.
 LOW_VOL = ((Decimal("0.07"), 10), (Decimal("0.14"), 15), (Decimal("0.21"), 15))
 MEDIUM_VOL = ((Decimal("0.10"), 10), (Decimal("0.20"), 15), (Decimal("0.30"), 15))
 HIGH_VOL = ((Decimal("0.15"), 10), (Decimal("0.25"), 15), (Decimal("0.35"), 15))
@@ -45,7 +46,14 @@ LADDERS = {
     "NVDA": MEDIUM_VOL,
     "TSLA": HIGH_VOL,
 }
-LADDER_COST_CAP = Decimal("14000.00")
+POSITION_COST_CAP = Decimal("14000.00")
+# Re-entry after a stop-out. Each price change of a symbol counts as one trading day:
+# wait one change, then while the price is above its 10-change EMA place a limit buy
+# 5% below it; re-price a limit left unfilled for more than 5 changes.
+EMA_ALPHA = Decimal(2) / (10 + 1)
+REENTRY_SHARES = 10
+REENTRY_DISCOUNT = Decimal("0.05")
+REENTRY_EXPIRY = 5
 # Kill switch: new buys are refused while equity is more than 15% below its peak.
 KILL_SWITCH_DRAWDOWN = Decimal("0.15")
 
@@ -118,6 +126,9 @@ def stop_price(holding: Holding) -> Decimal:
 def get_state() -> dict:
     account, _ = Account.objects.get_or_create(pk=1)
     prices = load_prices()
+    reentries = dict(
+        Quote.objects.filter(reentry_limit__isnull=False).values_list("symbol", "reentry_limit")
+    )
     holdings = []
     holdings_value = Decimal("0.00")
     for holding in Holding.objects.order_by("symbol"):
@@ -148,7 +159,12 @@ def get_state() -> dict:
             "buys_halted": account.cash + holdings_value < halt_below(account),
         },
         "quotes": [
-            {"symbol": symbol, "name": name, "price": money(prices[symbol])}
+            {
+                "symbol": symbol,
+                "name": name,
+                "price": money(prices[symbol]),
+                "reentry_limit": money(reentries[symbol]) if symbol in reentries else None,
+            }
             for symbol, (name, _) in QUOTES.items()
         ],
         "holdings": holdings,
@@ -251,6 +267,7 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
     if price * quantity > account.cash:
         raise TradeError("Insufficient paper cash for this order.")
     order = buy(account, holding, symbol, quantity, price, client_order_id)
+    clear_reentry(symbol)  # buying by hand replaces any pending re-entry
     if holding:
         # Re-upgrades at once if already 7% above the new average. Ladders and profit
         # takes wait for a price move.
@@ -268,7 +285,7 @@ def buy_ladder(account: Account, holding: Holding, price: Decimal) -> None:
     for level, (drop, shares) in enumerate(LADDERS[holding.symbol], start=1):
         if holding.ladder_level >= level:
             continue
-        room = LADDER_COST_CAP - holding.average_cost * holding.quantity
+        room = POSITION_COST_CAP - holding.average_cost * holding.quantity
         shares = min(shares, int(max(room, 0) // price), int(account.cash // price))
         if price > entry * (1 - drop) or not shares:
             break
@@ -297,6 +314,7 @@ def apply_rules(symbol: str, price: Decimal, stops_only: bool = False) -> None:
     if price <= stop_price(holding):
         trigger = "hard_stop" if holding.trail_peak is None else "trailing_stop"
         sell(account, holding, holding.quantity, price, uuid4(), trigger)
+        Quote.objects.filter(symbol=symbol).update(stop_move=F("moves"))
         return
     if stops_only:
         return
@@ -323,9 +341,45 @@ def parse_price(raw: str) -> Decimal:
     return price.quantize(CENT)
 
 
+def clear_reentry(symbol: str) -> None:
+    Quote.objects.filter(symbol=symbol).update(
+        stop_move=None, reentry_limit=None, reentry_move=None
+    )
+
+
+def re_enter(symbol: str, price: Decimal) -> None:
+    """After a stop-out, fill a pending re-entry limit the price has reached, keep a
+    working one, or (re)place one; cancel it while the kill switch is on."""
+    quote = Quote.objects.get(symbol=symbol)
+    if quote.stop_move is None:
+        return
+    account, _ = Account.objects.get_or_create(pk=1)
+    halted = equity(account, load_prices()) < halt_below(account)
+    pending = quote.reentry_limit is not None and not halted
+    if pending and price <= quote.reentry_limit:
+        shares = min(REENTRY_SHARES, int(POSITION_COST_CAP // price), int(account.cash // price))
+        if shares:
+            buy(account, None, symbol, shares, price, uuid4(), "reentry")
+            clear_reentry(symbol)
+            return
+    if pending and quote.moves - quote.reentry_move <= REENTRY_EXPIRY:
+        return  # still working
+    can_place = not halted and quote.moves > quote.stop_move and price > quote.ema
+    quote.reentry_limit = (price * (1 - REENTRY_DISCOUNT)).quantize(CENT) if can_place else None
+    quote.reentry_move = quote.moves if can_place else None
+    quote.save(update_fields=["reentry_limit", "reentry_move"])
+
+
 def move_price(symbol: str, price: Decimal) -> None:
-    Quote.objects.filter(symbol=symbol).update(price=price)
+    """One price change: one trading day for this symbol."""
+    quote = Quote.objects.get(symbol=symbol)
+    previous = quote.price if quote.ema is None else quote.ema
+    quote.ema = (previous + EMA_ALPHA * (price - previous)).quantize(Decimal("0.0001"))
+    quote.price = price
+    quote.moves += 1
+    quote.save(update_fields=["price", "ema", "moves"])
     apply_rules(symbol, price)
+    re_enter(symbol, price)
 
 
 @transaction.atomic

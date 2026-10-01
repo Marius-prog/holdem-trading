@@ -17,6 +17,13 @@ class Account(models.Model):
 class Quote(models.Model):
     symbol = models.CharField(max_length=5, unique=True)
     price = models.DecimalField(max_digits=12, decimal_places=2)
+    # Each price change counts as one trading day for the re-entry rules.
+    moves = models.PositiveIntegerField(default=0)
+    ema = models.DecimalField(max_digits=16, decimal_places=4, null=True, blank=True)
+    # Change on which a stop sold the whole position, and the pending re-entry limit buy.
+    stop_move = models.PositiveIntegerField(null=True, blank=True)
+    reentry_limit = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    reentry_move = models.PositiveIntegerField(null=True, blank=True)
 
 
 class Holding(models.Model):
@@ -41,7 +48,7 @@ class Order(models.Model):
     price = models.DecimalField(max_digits=12, decimal_places=2)
     total = models.DecimalField(max_digits=18, decimal_places=2)
     # "" for manual orders; "hard_stop", "trailing_stop" or "profit_take" for automatic
-    # sells; "ladder" for automatic buys.
+    # sells; "ladder" or "reentry" for automatic buys.
     trigger = models.CharField(max_length=13, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 

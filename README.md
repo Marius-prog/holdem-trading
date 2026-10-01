@@ -74,6 +74,15 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   average cost or while the kill switch is on, and they run only on price
   changes, never inside a manual buy. These buys show as
   Ladder buy.
+- Re-entry after a stop-out: each price change of a symbol counts as one trading
+  day, and the symbol keeps a 10-change moving average (EMA). After a stop sells
+  a whole position, from the next change on, while the price is above its EMA, a
+  limit buy for 10 shares is placed 5% below the price (shown in Market watch). A
+  later change at or below the limit buys at the new price and opens a fresh
+  position; a limit unfilled after 5 more changes is re-priced. The kill switch
+  cancels pending re-entries and a manual buy of the symbol replaces them. The
+  buy shrinks to the $14,000 cost cap and the cash on hand, and shows as
+  Re-entry. A manual sell is not a stop-out.
 - Kill switch: the account tracks its highest portfolio value after each price
   change. While the value is more than 15% below that peak, new buys are refused
   and the dashboard says so; sells, stops and profit-taking keep working. Buys
