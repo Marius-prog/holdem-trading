@@ -27,6 +27,10 @@ MAX_CASH = Decimal("1000000000000.00")
 HARD_STOP = Decimal("0.25")
 TRAIL_UPGRADE = Decimal("0.07")
 TRAIL = Decimal("0.12")
+# Profit-taking levels: (gain over average cost, sell numerator, denominator of current
+# shares), rounded down. 3/7 of what is left after the first take is another 30% of the
+# position, leaving 40% to ride the trailing stop.
+PROFIT_TAKES = ((Decimal("0.15"), 3, 10), (Decimal("0.25"), 3, 7))
 
 
 class TradeError(ValueError):
@@ -179,18 +183,20 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
         total=total,
     )
     if holding:
-        apply_stop(symbol, price)  # Re-upgrades at once if already 7% above the new average.
+        apply_rules(symbol, price)  # Re-upgrades at once if already 7% above the new average.
     return order_data(order)
 
 
-def apply_stop(symbol: str, price: Decimal) -> None:
-    """Upgrade or ratchet the stop at the new price, then sell everything if it is hit.
+def apply_rules(symbol: str, price: Decimal) -> None:
+    """Upgrade or ratchet the stop at the new price, sell everything if it is hit,
+    otherwise take any profit level reached.
 
-    Stop sells fill at the new price, so a gap below the stop fills below it.
+    Automatic sells fill at the new price, so a gap below the stop fills below it.
     """
     holding = Holding.objects.filter(symbol=symbol).first()
     if not holding:
         return
+    account, _ = Account.objects.get_or_create(pk=1)
     if holding.trail_peak is None:
         raise_stop_at = holding.average_cost * (1 + TRAIL_UPGRADE)
     else:
@@ -200,8 +206,15 @@ def apply_stop(symbol: str, price: Decimal) -> None:
         holding.save(update_fields=["trail_peak"])
     if price <= stop_price(holding):
         trigger = "hard_stop" if holding.trail_peak is None else "trailing_stop"
-        account, _ = Account.objects.get_or_create(pk=1)
         sell(account, holding, holding.quantity, price, uuid4(), trigger)
+        return
+    for level, (gain, numerator, denominator) in enumerate(PROFIT_TAKES, start=1):
+        if holding.profit_level >= level or price < holding.average_cost * (1 + gain):
+            continue
+        holding.profit_level = level
+        holding.save(update_fields=["profit_level"])
+        if shares := holding.quantity * numerator // denominator:
+            sell(account, holding, shares, price, uuid4(), "profit_take")
 
 
 def parse_price(raw: str) -> Decimal:
@@ -217,7 +230,7 @@ def parse_price(raw: str) -> Decimal:
 
 def move_price(symbol: str, price: Decimal) -> None:
     Quote.objects.filter(symbol=symbol).update(price=price)
-    apply_stop(symbol, price)
+    apply_rules(symbol, price)
 
 
 @transaction.atomic
