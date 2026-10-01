@@ -75,7 +75,8 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   changes, never inside a manual buy. These buys show as
   Ladder buy.
 - Market regime: QQQ is a market index you cannot trade. It starts at $480.00,
-  moves with every Next tick, and can be set in the Set price form. It keeps its
+  moves with every Next tick (before the quotes, so their rules see the new
+  regime), and can be set in the Set price form. It keeps its
   last 20 prices (one per change); while QQQ is below their average the market
   is bearish and new ladder buys pause (stops, profit-taking, re-entry and your
   own buys continue). Market watch shows QQQ, its average and the regime.

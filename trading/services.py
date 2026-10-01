@@ -436,7 +436,10 @@ def reset_kill_switch() -> dict:
 
 @transaction.atomic
 def tick() -> dict:
-    for symbol, price in load_prices().items():
+    prices = load_prices()
+    # QQQ moves first, so the rules for every quote in this tick see the new regime.
+    for symbol in sorted(prices, key=lambda symbol: symbol != REGIME_SYMBOL):
+        price = prices[symbol]
         bps = random.randint(-MAX_TICK_BPS, MAX_TICK_BPS)
         moved = (price * (1 + Decimal(bps) / 10_000)).quantize(CENT)
         if bps and moved == price:

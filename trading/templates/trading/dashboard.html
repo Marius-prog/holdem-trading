@@ -125,7 +125,7 @@
     const selected = pending?.symbol || $('symbol').value;
     const repricing = $('price-symbol').value || selected;
     const market = state.market;
-    $('regime').innerHTML = `${escapeHTML(market.symbol)} ${currency(market.price)} · 20-change average ${currency(market.average)} · <strong>${market.bearish ? 'Bearish: ladder buys paused' : 'Bullish'}</strong>`;
+    $('regime').innerHTML = `${escapeHTML(market.symbol)} ${currency(market.price)} · ${market.bearish ? 'below' : 'at or above'} its 20-change average ${currency(market.average)} · <strong>${market.bearish ? 'Bearish: ladder buys paused' : 'Bullish'}</strong>`;
     $('regime').classList.toggle('bearish', market.bearish);
     $('price-symbol').innerHTML = [...state.quotes.map(quote => quote.symbol), market.symbol].map(symbol => `<option>${escapeHTML(symbol)}</option>`).join('');
     $('price-symbol').value = repricing;

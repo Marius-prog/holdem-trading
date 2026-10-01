@@ -466,6 +466,14 @@ class StopProtectionTests(TestCase):
         self.set_price("AAPL", "211.59")
         self.assertEqual(self.ladder_buys(), [(10, "211.59")])
 
+    def test_a_tick_that_turns_the_market_bearish_buys_no_ladders(self):
+        self.buy("AAPL", 10)
+        self.set_price("AAPL", "218.00")  # -3% lands below the 211.59 ladder level
+        with patch("trading.services.random.randint", return_value=-300):
+            self.client.post("/api/tick", headers=HEADERS)  # QQQ 465.60 < avg 472.80
+        self.assertTrue(self.market()["bearish"])
+        self.assertEqual(self.ladder_buys(), [])
+
     def test_tick_moves_qqq_too(self):
         with patch("trading.services.random.randint", return_value=300):
             self.client.post("/api/tick", headers=HEADERS)
