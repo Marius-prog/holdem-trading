@@ -53,6 +53,7 @@ class PriceRequest(msgspec.Struct, forbid_unknown_fields=True):
 
 
 class DcaRequest(msgspec.Struct, forbid_unknown_fields=True):
+    symbol: str
     enabled: bool
 
 
@@ -100,7 +101,10 @@ async def update_quote(
 async def dca_toggle(dca: DcaRequest, paper_trade: PaperTradeHeader = "", host: HostHeader = ""):
     if refused := refuse_write(host, paper_trade):
         return refused
-    return await sync_to_async(set_dca)(dca.enabled)
+    try:
+        return await sync_to_async(set_dca)(dca.symbol, dca.enabled)
+    except TradeError as error:
+        return JSON({"detail": str(error)}, status_code=error.status)
 
 
 @api.post("/api/kill-switch/reset")

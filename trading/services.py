@@ -16,6 +16,7 @@ QUOTES = {
     "AMZN": ("Amazon", Decimal("186.51")),
     "TSLA": ("Tesla", Decimal("258.02")),
     "SPY": ("SPDR S&P 500 ETF", Decimal("656.77")),
+    "GLD": ("SPDR Gold Shares", Decimal("400.00")),
 }
 # Market regime: QQQ is a non-tradable index that moves like the quotes. Ladder buys
 # pause while it is below the average of its last 20 prices (one per change).
@@ -32,14 +33,16 @@ MAX_CASH = Decimal("1000000000000.00")
 # Stop protection per symbol: (hard stop below average cost, gain that upgrades it to a
 # trailing stop, trailing distance). The trailing stop only ratchets up.
 DEFAULT_STOPS = (Decimal("0.25"), Decimal("0.07"), Decimal("0.12"))
-STOPS = {"SPY": (Decimal("0.12"), Decimal("0.07"), Decimal("0.05"))}  # Strategy 3
-# Strategy 3: dollar-cost average into SPY, one buy per 7 SPY price changes (a "week"),
-# up to a target or a value cap, then hold. No ladders, profit takes or re-entry.
-DCA_SYMBOL = "SPY"
-DCA_SHARES = 4
+DCA_STOPS = (Decimal("0.12"), Decimal("0.07"), Decimal("0.05"))  # Strategy 3
+STOPS = {"SPY": DCA_STOPS, "GLD": DCA_STOPS}
+# Strategy 3: dollar-cost average into SPY and a GLD sleeve. Each buys its shares once per
+# 7 of its own price changes (a "week"), up to a target or a value cap, then holds. No
+# ladders, profit takes or re-entry for these symbols.
+DCA_PLANS = {  # symbol: (shares per buy, target shares, max position value)
+    "SPY": (4, 39, Decimal("30000.00")),
+    "GLD": (2, 37, Decimal("15000.00")),
+}
 DCA_EVERY = 7
-DCA_TARGET = 39
-DCA_MAX_VALUE = Decimal("30000.00")
 # Profit-taking levels: (gain over average cost, sell numerator, denominator of current
 # shares), rounded down. 3/7 of what is left after the first take is another 30% of the
 # position, leaving 40% to ride the trailing stop.
@@ -147,19 +150,19 @@ def stop_price(holding: Holding) -> Decimal:
     return stop.quantize(CENT, rounding=ROUND_DOWN)
 
 
-def dca_state() -> dict:
-    plan = dca_plan()
-    holding = Holding.objects.filter(symbol=DCA_SYMBOL).first()
+def dca_state(symbol: str) -> dict:
+    plan = dca_plan(symbol)
+    holding = Holding.objects.filter(symbol=symbol).first()
     next_buy_in = None
     if plan.enabled and plan.phase == "dca":
-        moves = Quote.objects.get(symbol=DCA_SYMBOL).moves
+        moves = Quote.objects.get(symbol=symbol).moves
         last = plan.last_buy_move
         next_buy_in = 0 if last is None else max(DCA_EVERY - (moves - last), 0)
     return {
         "enabled": plan.enabled,
         "phase": plan.phase,
         "shares": holding.quantity if holding else 0,
-        "target": DCA_TARGET,
+        "target": DCA_PLANS[symbol][1],
         "next_buy_in": next_buy_in,
         "cycle": plan.cycle,
     }
@@ -211,7 +214,7 @@ def get_state() -> dict:
             }
             for symbol, (name, _) in QUOTES.items()
         ],
-        "dca": dca_state(),
+        "dca": {symbol: dca_state(symbol) for symbol in DCA_PLANS},
         "market": {
             "symbol": REGIME_SYMBOL,
             "price": money(regime_price),
@@ -368,7 +371,7 @@ def apply_rules(symbol: str, price: Decimal, stops_only: bool = False) -> None:
     if price <= stop_price(holding):
         trigger = "hard_stop" if holding.trail_peak is None else "trailing_stop"
         sell(account, holding, holding.quantity, price, uuid4(), trigger)
-        if symbol == DCA_SYMBOL:  # start a new accumulation cycle a week from now
+        if symbol in DCA_PLANS:  # start a new accumulation cycle a week from now
             moves = Quote.objects.get(symbol=symbol).moves
             DcaPlan.objects.filter(symbol=symbol).update(
                 phase="dca", last_buy_move=moves, cycle=F("cycle") + 1
@@ -376,7 +379,7 @@ def apply_rules(symbol: str, price: Decimal, stops_only: bool = False) -> None:
         else:
             Quote.objects.filter(symbol=symbol).update(stop_move=F("moves"))
         return
-    if stops_only or symbol == DCA_SYMBOL:
+    if stops_only or symbol in DCA_PLANS:
         return
     buy_ladder(account, holding, price)
     for level, (gain, numerator, denominator) in enumerate(PROFIT_TAKES, start=1):
@@ -430,21 +433,22 @@ def re_enter(symbol: str, price: Decimal) -> None:
     quote.save(update_fields=["reentry_limit", "reentry_move"])
 
 
-def dca_plan() -> DcaPlan:
-    plan, _ = DcaPlan.objects.get_or_create(symbol=DCA_SYMBOL)
+def dca_plan(symbol: str) -> DcaPlan:
+    plan, _ = DcaPlan.objects.get_or_create(symbol=symbol)
     return plan
 
 
-def dca_buy(burst: bool = False) -> None:
-    """Buy DCA_SHARES once DCA_EVERY SPY changes have passed since the last buy, or the
-    rest up to the target at once (burst). Hold once at the target or the value cap; a
-    burst cut short by cash leaves the weekly buys running."""
-    plan = dca_plan()
-    holding = Holding.objects.filter(symbol=DCA_SYMBOL).first()
+def dca_buy(symbol: str, burst: bool = False) -> None:
+    """Buy the plan's shares once DCA_EVERY of the symbol's changes have passed since its
+    last buy, or the rest up to the target at once (burst). Hold once at the target or
+    the value cap; a burst cut short by cash leaves the weekly buys running."""
+    per_buy, target, max_value = DCA_PLANS[symbol]
+    plan = dca_plan(symbol)
+    holding = Holding.objects.filter(symbol=symbol).first()
     if plan.phase == "holding" and not holding:  # sold by hand: accumulate again
         plan.phase = "dca"
         plan.save(update_fields=["phase"])
-    quote = Quote.objects.get(symbol=DCA_SYMBOL)
+    quote = Quote.objects.get(symbol=symbol)
     account, _ = Account.objects.get_or_create(pk=1)
     last = plan.last_buy_move
     waiting = not burst and last is not None and quote.moves - last < DCA_EVERY
@@ -452,26 +456,28 @@ def dca_buy(burst: bool = False) -> None:
     if not plan.enabled or plan.phase != "dca" or waiting or halted:
         return
     held = holding.quantity if holding else 0
-    room = int(max(DCA_MAX_VALUE - quote.price * held, 0) // quote.price)
-    want = DCA_TARGET - held if burst else DCA_SHARES
-    shares = min(want, DCA_TARGET - held, room, int(account.cash // quote.price))
+    room = int(max(max_value - quote.price * held, 0) // quote.price)
+    want = target - held if burst else per_buy
+    shares = min(want, target - held, room, int(account.cash // quote.price))
     if shares > 0:
         trigger = "dca_burst" if burst else "dca"
-        buy(account, holding, DCA_SYMBOL, shares, quote.price, uuid4(), trigger)
+        buy(account, holding, symbol, shares, quote.price, uuid4(), trigger)
         plan.last_buy_move = quote.moves
-    if held + shares >= DCA_TARGET or shares == room:  # a burst short on cash keeps going
+    if held + shares >= target or shares == room:  # a burst short on cash keeps going
         plan.phase = "holding"
     plan.save(update_fields=["phase", "last_buy_move"])
 
 
 @transaction.atomic
-def set_dca(enabled: bool) -> dict:
+def set_dca(symbol: str, enabled: bool) -> dict:
+    if symbol not in DCA_PLANS:
+        raise TradeError("Dollar-cost averaging runs for SPY and GLD only.")
     load_prices()
-    plan = dca_plan()
+    plan = dca_plan(symbol)
     plan.enabled = enabled
     plan.save(update_fields=["enabled"])
     if enabled:
-        dca_buy()
+        dca_buy(symbol)
     return get_state()
 
 
@@ -488,10 +494,11 @@ def move_price(symbol: str, price: Decimal) -> None:
     quote.save(update_fields=["price", "ema", "moves", "history"])
     apply_rules(symbol, price)
     re_enter(symbol, price)
-    if symbol == DCA_SYMBOL:
-        dca_buy()
+    if symbol in DCA_PLANS:
+        dca_buy(symbol)
     elif was_bearish and not market_regime()[2]:  # QQQ crossed above its average
-        dca_buy(burst=True)
+        for plan_symbol in DCA_PLANS:
+            dca_buy(plan_symbol, burst=True)
 
 
 @transaction.atomic

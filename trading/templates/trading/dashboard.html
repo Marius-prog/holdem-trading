@@ -54,7 +54,7 @@
           <div class="market-head"><span>Company / symbol</span><span>Price</span><span></span></div>
           <div id="quotes"><div class="skeleton">Loading simulated quotes…</div></div>
           <div id="regime" class="regime" role="status"></div>
-          <div id="dca" class="regime" role="status"><span id="dca-text"></span> <button type="button" class="plain-button" id="dca-toggle" disabled>Start SPY DCA</button></div>
+          <div id="dca-plans"></div>
           <form id="price-form" class="price-form"><label for="price-symbol">Set price</label><select id="price-symbol" name="symbol" disabled></select><input id="new-price" name="price" aria-label="New price" type="number" min="0.01" max="1000000" step="0.01" inputmode="decimal" required disabled><button type="submit" class="plain-button" id="set-price" disabled>Set price</button><button type="button" class="plain-button" id="tick" disabled>Next tick ±3%</button><p id="price-status" class="status" role="status" aria-live="polite"></p></form>
           <div class="market-foot"><span>Simulated prices · No live market data</span><span>USD</span></div>
         </section>
@@ -102,7 +102,8 @@
     $('quantity').disabled = locked;
     document.querySelectorAll('[data-side]').forEach(button => { button.disabled = locked; button.setAttribute('aria-pressed', String(side === button.dataset.side)); });
     $('submit-order').disabled = !state || sending || loading || moving;
-    ['price-symbol', 'new-price', 'set-price', 'tick', 'reset-kill-switch', 'dca-toggle'].forEach(id => { $(id).disabled = !state || sending || loading || moving; });
+    ['price-symbol', 'new-price', 'set-price', 'tick', 'reset-kill-switch'].forEach(id => { $(id).disabled = !state || sending || loading || moving; });
+    document.querySelectorAll('[data-dca]').forEach(button => { button.disabled = !state || sending || loading || moving; });
     $('submit-order').textContent = sending ? 'Submitting…' : pending ? 'Retry pending order' : `Place paper ${side}`;
     $('refresh').disabled = loading || sending || moving;
   }
@@ -118,6 +119,11 @@
     document.querySelectorAll('.quote').forEach(button => { const selected = button.dataset.symbol === quote.symbol; button.classList.toggle('selected', selected); button.setAttribute('aria-pressed', String(selected)); });
     setControls();
   }
+  function dcaText(symbol, plan) {
+    if (!plan.enabled) return `${symbol} DCA is off.`;
+    if (plan.phase === 'holding') return `${symbol} DCA cycle ${plan.cycle}: holding ${plan.shares} shares on their stop.`;
+    return `${symbol} DCA cycle ${plan.cycle}: ${plan.shares} of ${plan.target} shares, next buy in ${plan.next_buy_in} ${symbol} change${plan.next_buy_in === 1 ? '' : 's'}.`;
+  }
   function pricePlaceholder() {
     const symbol = $('price-symbol').value;
     $('new-price').placeholder = symbol === state.market.symbol ? state.market.price : state.quotes.find(quote => quote.symbol === symbol)?.price || '';
@@ -128,9 +134,7 @@
     const market = state.market;
     $('regime').innerHTML = `${escapeHTML(market.symbol)} ${currency(market.price)} · ${market.bearish ? 'below' : 'at or above'} its 20-change average ${currency(market.average)} · <strong>${market.bearish ? 'Bearish: ladder buys paused' : 'Bullish'}</strong>`;
     $('regime').classList.toggle('bearish', market.bearish);
-    const dca = state.dca;
-    $('dca-text').textContent = !dca.enabled ? 'SPY DCA is off.' : dca.phase === 'holding' ? `SPY DCA cycle ${dca.cycle}: holding ${dca.shares} shares on their stop.` : `SPY DCA cycle ${dca.cycle}: ${dca.shares} of ${dca.target} shares, next buy in ${dca.next_buy_in} SPY change${dca.next_buy_in === 1 ? '' : 's'}.`;
-    $('dca-toggle').textContent = dca.enabled ? 'Stop SPY DCA' : 'Start SPY DCA';
+    $('dca-plans').innerHTML = Object.entries(state.dca).map(([symbol, plan]) => `<div class="regime" role="status">${escapeHTML(dcaText(symbol, plan))} <button type="button" class="plain-button" data-dca="${escapeHTML(symbol)}">${plan.enabled ? 'Stop' : 'Start'} ${escapeHTML(symbol)} DCA</button></div>`).join('');
     $('price-symbol').innerHTML = [...state.quotes.map(quote => quote.symbol), market.symbol].map(symbol => `<option>${escapeHTML(symbol)}</option>`).join('');
     $('price-symbol').value = repricing;
     if (!$('price-symbol').value) $('price-symbol').value = state.quotes[0].symbol;
@@ -199,7 +203,12 @@
     if ($('price-form').reportValidity()) movePrices('/api/quotes', {symbol:$('price-symbol').value, price:$('new-price').value});
   });
   $('tick').addEventListener('click', () => movePrices('/api/tick'));
-  $('dca-toggle').addEventListener('click', () => movePrices('/api/dca', {enabled: !state.dca.enabled}, state.dca.enabled ? 'SPY DCA stopped.' : 'SPY DCA started; nothing to buy right now.'));
+  $('dca-plans').addEventListener('click', event => {
+    const button = event.target.closest('[data-dca]');
+    if (!button || !state) return;
+    const symbol = button.dataset.dca, plan = state.dca[symbol];
+    movePrices('/api/dca', {symbol, enabled: !plan.enabled}, plan.enabled ? `${symbol} DCA stopped.` : `${symbol} DCA started; nothing to buy right now.`);
+  });
   $('reset-kill-switch').addEventListener('click', async () => {
     if (!state || sending || loading || moving) return;
     moving = true; setControls();
