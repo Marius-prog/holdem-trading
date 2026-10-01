@@ -9,10 +9,11 @@ from django_bolt import JSON, BoltAPI, Request
 from django_bolt.param_functions import Header
 from django_bolt.shortcuts import render
 
-from .services import TradeError, get_state, place_order
+from .services import TradeError, get_state, place_order, set_price, tick
 
 api = BoltAPI()
 HostHeader = Annotated[str, Header(alias="host")]
+PaperTradeHeader = Annotated[str, Header(alias="x-paper-trade")]
 
 
 def refuse_foreign_host(host: str) -> JSON | None:
@@ -23,11 +24,24 @@ def refuse_foreign_host(host: str) -> JSON | None:
     return JSON({"detail": "Host not allowed."}, status_code=400)
 
 
+def refuse_write(host: str, paper_trade: str) -> JSON | None:
+    if refused := refuse_foreign_host(host):
+        return refused
+    if paper_trade != "1":
+        return JSON({"detail": "X-Paper-Trade: 1 is required."}, status_code=403)
+    return None
+
+
 class OrderRequest(msgspec.Struct, forbid_unknown_fields=True):
     symbol: str
     side: str
     quantity: int
     client_order_id: UUID
+
+
+class PriceRequest(msgspec.Struct, forbid_unknown_fields=True):
+    symbol: str
+    price: str
 
 
 @api.get("/")
@@ -45,16 +59,36 @@ async def state(host: HostHeader = ""):
 @api.post("/api/orders")
 async def create_order(
     order: OrderRequest,
-    paper_trade: Annotated[str, Header(alias="x-paper-trade")] = "",
+    paper_trade: PaperTradeHeader = "",
     host: HostHeader = "",
 ):
-    if refused := refuse_foreign_host(host):
+    if refused := refuse_write(host, paper_trade):
         return refused
-    if paper_trade != "1":
-        return JSON({"detail": "X-Paper-Trade: 1 is required."}, status_code=403)
     try:
         return await sync_to_async(place_order)(
             order.symbol, order.side, order.quantity, order.client_order_id
         )
+    except TradeError as error:
+        return JSON({"detail": str(error)}, status_code=error.status)
+
+
+@api.post("/api/quotes")
+async def update_quote(
+    quote: PriceRequest, paper_trade: PaperTradeHeader = "", host: HostHeader = ""
+):
+    if refused := refuse_write(host, paper_trade):
+        return refused
+    try:
+        return await sync_to_async(set_price)(quote.symbol, quote.price)
+    except TradeError as error:
+        return JSON({"detail": str(error)}, status_code=error.status)
+
+
+@api.post("/api/tick")
+async def market_tick(paper_trade: PaperTradeHeader = "", host: HostHeader = ""):
+    if refused := refuse_write(host, paper_trade):
+        return refused
+    try:
+        return await sync_to_async(tick)()
     except TradeError as error:
         return JSON({"detail": str(error)}, status_code=error.status)

@@ -14,10 +14,11 @@
     .summary{display:grid;grid-template-columns:1.5fr 1fr 1fr;background:var(--white);border:1px solid var(--line);border-radius:9px;overflow:hidden;margin-bottom:28px}.summary-card{padding:25px 26px;position:relative}.summary-card+.summary-card{border-left:1px solid var(--line)}.summary-card:first-child{background:var(--green);color:#faffeb}.summary-label{font-size:12px;opacity:.8;margin-bottom:12px}.summary-value{font-size:29px;font-weight:450;letter-spacing:-1.4px;line-height:1.3}.summary-card:first-child .summary-value{font-size:36px}.summary-sub{font-size:11px;margin-top:15px;opacity:.8}.summary-sub .arrow{display:inline-block;margin-right:5px}.workspace{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;align-items:start}.main-stack{min-width:0;display:grid;gap:24px}.panel{border:1px solid var(--line);background:var(--white);border-radius:8px;overflow:hidden}.panel-head{padding:20px 22px;display:flex;justify-content:space-between;align-items:center;gap:12px}.panel-head p{font-size:11px;color:var(--muted);margin-top:3px}.panel-tag{font-size:10px;letter-spacing:1px;color:var(--muted)}.market-head{display:grid;grid-template-columns:1fr 110px 34px;padding:0 22px 9px;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:1px}.market-head span:nth-child(2){text-align:right}.quote{display:grid;grid-template-columns:1fr 110px 34px;align-items:center;text-align:left;width:100%;border:0;border-top:1px solid #edeee6;background:transparent;border-radius:0;padding:14px 22px;transition:background .15s}.quote:hover{background:#f2f4e8}.quote.selected{background:#eef2df;box-shadow:inset 3px 0 var(--green)}.instrument{display:flex;align-items:center;gap:12px;min-width:0}.instrument-mark{width:35px;height:35px;display:grid;place-items:center;border:1px solid #dce0d5;border-radius:8px;background:#f1f3eb;font-size:13px;font-weight:600;flex-shrink:0}.instrument-name{min-width:0}.instrument-name strong{display:block;font-size:12px}.instrument-name small{display:block;color:var(--muted);font-size:11px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}.price{font-size:13px;text-align:right}.quote-arrow{text-align:right;color:#68735b}.market-foot{padding:12px 22px;border-top:1px solid var(--line);color:var(--muted);font-size:10px;display:flex;justify-content:space-between;gap:12px}.allocation{padding:0 22px 20px}.allocation-bar{display:flex;height:9px;background:#e1e5d8;border-radius:3px;overflow:hidden;margin:4px 0 14px}.allocation-invested{background:var(--green);width:0;transition:width .3s}.allocation-labels{display:flex;justify-content:space-between;gap:12px;font-size:11px}.swatch{display:inline-block;width:7px;height:7px;background:var(--green);margin-right:7px}.swatch.cash{background:#d3dac4}
     .ticket{position:sticky;top:24px}.ticket .panel-head{border-bottom:1px solid var(--line)}.ticket-body{padding:22px}.ticket-label{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:11px;color:var(--muted)}select,input{width:100%;background:var(--white);border:1px solid #cfd3c6;padding:12px;color:var(--ink)}select{font-size:13px;font-weight:600}input{font-family:"SFMono-Regular",Consolas,monospace;font-size:16px}input:disabled,select:disabled{opacity:.7}.field{margin-bottom:22px}.side-switch{display:grid;grid-template-columns:1fr 1fr;background:#f0f1e9;padding:4px;border-radius:6px;margin-bottom:23px;gap:4px}.side-switch button{border:0;background:transparent;padding:9px;font-size:12px;font-weight:650}.side-switch button[aria-pressed="true"]{background:var(--green);color:white;box-shadow:0 1px 3px #0001}.side-switch button[data-side="sell"][aria-pressed="true"]{background:#93492e}.ticket-price{font-size:26px;letter-spacing:-1px;margin:9px 0 3px}.ticket-caption{font-size:10px;color:var(--muted)}.quantity-meta{font-size:11px;color:var(--muted);margin-top:8px}.ticket-details{border-top:1px dashed #cfd3c6;border-bottom:1px dashed #cfd3c6;padding:16px 0;margin-bottom:20px;display:grid;gap:11px}.detail-row{display:flex;justify-content:space-between;gap:12px;font-size:11px}.detail-row:last-child{font-weight:650;font-size:13px}.submit{width:100%;border:1px solid var(--green);background:var(--green);color:white;padding:13px 8px;font-weight:600;font-size:12px}.submit:hover{filter:brightness(1.12)}.ticket-help{color:var(--muted);font-size:10px;line-height:1.7;margin-top:14px;text-align:center}.status{font-size:12px;margin:12px 0 0;line-height:1.5;color:var(--green)}.status:empty{display:none}.status.error{color:var(--red)}.ticket-bottom{padding:15px 22px;background:#f0f2e7;border-top:1px solid var(--line);display:flex;gap:10px;align-items:start;font-size:11px;color:#5e6852}.ticket-bottom strong{display:block;color:var(--ink);font-size:11px;margin-bottom:3px}.circle{border:1px solid #a8b595;border-radius:50%;width:17px;height:17px;display:grid;place-items:center;flex-shrink:0;font-family:Georgia,serif;font-style:italic}
     .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;text-align:left;white-space:nowrap}th{font-family:"Avenir Next",Avenir,"Segoe UI",sans-serif;font-size:10px;letter-spacing:.6px;color:var(--muted);font-weight:500;text-transform:uppercase;padding:10px 20px;border-bottom:1px solid var(--line);background:#fafaf4}td{font-size:11px;padding:16px 20px;border-bottom:1px solid #edeee6}tr:last-child td{border-bottom:0}th.num,td.num{text-align:right}.empty{text-align:center;padding:32px 24px;color:var(--muted);font-size:12px;white-space:normal;line-height:1.8}.empty strong{display:block;color:var(--ink);font-weight:550;font-size:13px}.trade-side{font-family:"Avenir Next",Avenir,"Segoe UI",sans-serif;padding:3px 7px;border-radius:4px;font-size:10px;background:#e7eee2;color:var(--green)}.trade-side.sell{color:#93492e;background:#f8e9e0}.history{margin-top:24px}.page-foot{display:flex;justify-content:space-between;gap:20px;margin-top:24px;color:var(--muted);font-size:10px}.global-error{border:1px solid #d7ab9e;background:#fbede7;color:#8c3b2d;padding:12px 16px;border-radius:5px;margin-bottom:20px;font-size:12px}.global-error[hidden]{display:none}.skeleton{padding:50px 22px;color:var(--muted);font-size:12px}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    .price-form{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:12px 22px;border-top:1px solid var(--line);font-size:12px}.price-form label{color:var(--muted)}.price-form input{width:120px;padding:7px 10px;font-size:13px}.price-form .status{flex-basis:100%;margin:0}.stop-type{margin-left:6px;color:var(--muted);font-size:10px}
     @media(min-width:1500px){main{padding:40px 55px}.summary{margin-bottom:32px}.quote{padding-top:17px;padding-bottom:17px}}
     @media(max-width:1150px){.shell{grid-template-columns:165px minmax(0,1fr)}.sidebar{padding:25px 15px}main{padding:24px}.workspace{grid-template-columns:minmax(0,1fr) 290px;gap:18px}.summary-card{padding:22px 20px}.summary-value{font-size:24px}.summary-card:first-child .summary-value{font-size:29px}.brand{font-size:19px}}
     @media(max-width:900px){.shell{display:block}.sidebar{flex-direction:row;align-items:center;justify-content:space-between;padding:15px 24px;border-right:0;border-bottom:1px solid var(--line);gap:15px}.sidebar nav{display:flex;gap:4px}.nav-link{padding:7px 10px}.nav-icon,.side-note,.side-foot{display:none}.workspace{grid-template-columns:minmax(0,1fr) 290px}.intro h1{font-size:30px}.topbar{margin-bottom:28px}.summary-card{padding:20px 16px}}
-    @media(max-width:700px){main{padding:22px 16px}.sidebar{padding:14px 16px}.brand{font-size:19px}.brand-mark{width:26px;height:29px;font-size:22px}.nav-link{font-size:11px;padding:6px 7px}.top-actions{gap:8px}.breadcrumb{font-size:11px}.breadcrumb span{margin-left:6px}.topbar{margin-bottom:24px}.intro{align-items:start}.intro h1{font-size:29px}.date{display:none}.summary{grid-template-columns:1fr 1fr}.summary-card:first-child{grid-column:1/-1}.summary-card:nth-child(2){border-left:0}.summary-card{padding:18px 20px}.summary-card:first-child .summary-value{font-size:36px}.summary-sub{margin-top:9px}.workspace{display:flex;flex-direction:column;gap:20px}.main-stack{display:contents}.market{order:0;width:100%}.ticket{order:1;position:static;width:100%}.positions{order:2;width:100%}.allocation-panel{order:3;width:100%}.history{margin-top:20px}.summary{margin-bottom:20px}.page-foot{flex-direction:column;gap:6px}.panel-head{padding:18px 20px}.ticket-body{padding:20px}.market-head,.quote{padding-left:20px;padding-right:20px}.market-foot{padding-left:20px;padding-right:20px}.summary-value{font-size:24px}.intro p{max-width:280px}.panel-tag{font-size:9px}}
+    @media(max-width:700px){main{padding:22px 16px}.sidebar{padding:14px 16px}.brand{font-size:19px}.brand-mark{width:26px;height:29px;font-size:22px}.nav-link{font-size:11px;padding:6px 7px}.top-actions{gap:8px}.breadcrumb{font-size:11px}.breadcrumb span{margin-left:6px}.topbar{margin-bottom:24px}.intro{align-items:start}.intro h1{font-size:29px}.date{display:none}.summary{grid-template-columns:1fr 1fr}.summary-card:first-child{grid-column:1/-1}.summary-card:nth-child(2){border-left:0}.summary-card{padding:18px 20px}.summary-card:first-child .summary-value{font-size:36px}.summary-sub{margin-top:9px}.workspace{display:flex;flex-direction:column;gap:20px}.main-stack{display:contents}.market{order:0;width:100%}.ticket{order:1;position:static;width:100%}.positions{order:2;width:100%}.allocation-panel{order:3;width:100%}.history{margin-top:20px}.summary{margin-bottom:20px}.page-foot{flex-direction:column;gap:6px}.panel-head{padding:18px 20px}.ticket-body{padding:20px}.market-head,.quote{padding-left:20px;padding-right:20px}.market-foot,.price-form{padding-left:20px;padding-right:20px}.summary-value{font-size:24px}.intro p{max-width:280px}.panel-tag{font-size:9px}}
     @media(max-width:374px){.summary{grid-template-columns:1fr}.summary-card+.summary-card{border-left:0}.summary-card:nth-child(3){border-top:1px solid var(--line)}}
     @media(max-width:360px){.sidebar{gap:8px}.sidebar nav{gap:0}.nav-link{padding:6px 4px}}
     @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
@@ -32,7 +33,7 @@
       <a class="nav-link" href="#markets"><span class="nav-icon" aria-hidden="true">↗</span>Markets</a>
       <a class="nav-link" href="#activity"><span class="nav-icon" aria-hidden="true">≡</span>Activity</a>
     </nav>
-    <div class="side-note"><strong>A little practice.<br>A clearer perspective.</strong>Explore trading with virtual funds and fixed demo prices.</div>
+    <div class="side-note"><strong>A little practice.<br>A clearer perspective.</strong>Explore trading with virtual funds and simulated demo prices.</div>
     <div class="side-foot"><span class="avatar">PT</span><div><strong style="font-size:11px">Practice account</strong><br><small class="muted" style="font-size:10px">Local workspace</small></div></div>
   </aside>
   <main id="overview">
@@ -51,9 +52,10 @@
           <div class="panel-head"><div><h2 id="markets-heading">Market watch</h2><p>A small universe. Plenty of possibilities.</p></div><span class="panel-tag">DEMO QUOTES</span></div>
           <div class="market-head"><span>Company / symbol</span><span>Price</span><span></span></div>
           <div id="quotes"><div class="skeleton">Loading simulated quotes…</div></div>
-          <div class="market-foot"><span>Fixed simulated prices · No live market data</span><span>USD</span></div>
+          <form id="price-form" class="price-form"><label for="new-price">Set <span id="price-symbol">—</span> price</label><input id="new-price" name="price" type="number" min="0.01" max="1000000" step="0.01" inputmode="decimal" required disabled><button type="submit" class="plain-button" id="set-price" disabled>Set price</button><button type="button" class="plain-button" id="tick" disabled>Next tick ±3%</button><p id="price-status" class="status" role="status" aria-live="polite"></p></form>
+          <div class="market-foot"><span>Simulated prices · No live market data</span><span>USD</span></div>
         </section>
-        <section class="panel positions" aria-labelledby="positions-heading"><div class="panel-head"><h2 id="positions-heading">Your positions</h2><span class="panel-tag" id="positions-tag">HOLDINGS</span></div><div class="table-wrap"><table><thead><tr><th>Asset</th><th class="num">Shares</th><th class="num">Avg. cost</th><th class="num">Value</th><th class="num">Unrealized P&amp;L</th></tr></thead><tbody id="holdings"><tr><td colspan="5" class="empty">Loading positions…</td></tr></tbody></table></div></section>
+        <section class="panel positions" aria-labelledby="positions-heading"><div class="panel-head"><h2 id="positions-heading">Your positions</h2><span class="panel-tag" id="positions-tag">HOLDINGS</span></div><div class="table-wrap"><table><thead><tr><th>Asset</th><th class="num">Shares</th><th class="num">Avg. cost</th><th class="num">Value</th><th class="num">Unrealized P&amp;L</th><th class="num">Stop</th></tr></thead><tbody id="holdings"><tr><td colspan="6" class="empty">Loading positions…</td></tr></tbody></table></div></section>
         <section class="panel allocation-panel" aria-labelledby="allocation-heading"><div class="panel-head"><h2 id="allocation-heading">Capital allocation</h2><span class="panel-tag">YOUR BALANCE</span></div><div class="allocation"><div class="allocation-bar" role="img" id="allocation-bar" aria-label="Loading allocation"><div class="allocation-invested" id="allocation-invested"></div></div><div class="allocation-labels"><span><i class="swatch"></i>Stocks <span class="mono" id="stock-percent">—</span></span><span><i class="swatch cash"></i>Cash <span class="mono" id="cash-percent">—</span></span></div></div></section>
       </div>
       <section class="panel ticket" aria-labelledby="ticket-heading">
@@ -65,13 +67,13 @@
           <div class="ticket-details"><div class="detail-row"><span class="muted">Order type</span><span>Market · simulated</span></div><div class="detail-row"><span class="muted">Trading fee</span><span class="mono">$0.00</span></div><div class="detail-row"><span>Estimated total</span><span class="mono" id="order-total">—</span></div></div>
           <button class="submit" type="submit" id="submit-order" disabled>Place paper buy</button>
           <p id="order-status" class="status" role="status" aria-live="polite"></p>
-          <p class="ticket-help">Fills immediately at the displayed demo price.<br>Virtual funds only. No real orders are sent.</p>
+          <p class="ticket-help">Fills immediately at the displayed demo price. Positions auto-sell at a 25% stop, which trails 12% once up 7%.<br>Virtual funds only. No real orders are sent.</p>
         </form>
         <div class="ticket-bottom"><span class="circle" aria-hidden="true">i</span><div><strong>Learn with a clean slate</strong>Your account starts with $100,000 in virtual cash. Trades stay saved between visits.</div></div>
       </section>
     </div>
     <section class="panel history" id="activity" aria-labelledby="activity-heading"><div class="panel-head"><div><h2 id="activity-heading">Recent activity</h2><p>Your latest 100 filled paper orders.</p></div><span class="panel-tag" id="order-count">ORDER HISTORY</span></div><div class="table-wrap"><table><thead><tr><th>Time</th><th>Asset</th><th>Side</th><th class="num">Shares</th><th class="num">Fill price</th><th class="num">Total</th><th>Status</th></tr></thead><tbody id="orders"><tr><td colspan="7" class="empty">Loading activity…</td></tr></tbody></table></div></section>
-    <footer class="page-foot"><span>Paperdesk / A place to practice.</span><span>One local practice account · Fixed demo prices · No broker connection</span></footer>
+    <footer class="page-foot"><span>Paperdesk / A place to practice.</span><span>One local practice account · Simulated demo prices · No broker connection</span></footer>
   </main>
 </div>
 <script>
@@ -80,7 +82,8 @@
   const currency = value => new Intl.NumberFormat('en-US', {style:'currency', currency:'USD'}).format(Number(value));
   const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const pendingKey = 'paperdesk.pending-order';
-  let state = null, side = 'buy', sending = false, loading = false, pending = null;
+  const STOP_LABELS = {hard_stop:'Hard stop', trailing_stop:'Trailing stop'};
+  let state = null, side = 'buy', sending = false, loading = false, moving = false, pending = null;
   try { pending = JSON.parse(sessionStorage.getItem(pendingKey)); } catch { /* Storage may be unavailable. */ }
   if (pending && (typeof pending.symbol !== 'string' || !['buy','sell'].includes(pending.side) || !Number.isInteger(pending.quantity) || typeof pending.client_order_id !== 'string')) pending = null;
   if (pending) { side = pending.side; $('quantity').value = pending.quantity; }
@@ -89,15 +92,16 @@
     pending = value;
     try { if (value) sessionStorage.setItem(pendingKey, JSON.stringify(value)); else sessionStorage.removeItem(pendingKey); } catch { /* In-memory retry remains available. */ }
   }
-  function status(message, error = false) { $('order-status').textContent = message; $('order-status').classList.toggle('error', error); }
+  function status(message, error = false, id = 'order-status') { $(id).textContent = message; $(id).classList.toggle('error', error); }
   function setControls() {
     const locked = !state || sending || Boolean(pending);
     $('symbol').disabled = locked;
     $('quantity').disabled = locked;
     document.querySelectorAll('[data-side]').forEach(button => { button.disabled = locked; button.setAttribute('aria-pressed', String(side === button.dataset.side)); });
-    $('submit-order').disabled = !state || sending || loading;
+    $('submit-order').disabled = !state || sending || loading || moving;
+    ['new-price', 'set-price', 'tick'].forEach(id => { $(id).disabled = !state || sending || loading || moving; });
     $('submit-order').textContent = sending ? 'Submitting…' : pending ? 'Retry pending order' : `Place paper ${side}`;
-    $('refresh').disabled = loading || sending;
+    $('refresh').disabled = loading || sending || moving;
   }
   function updateTicket() {
     if (!state) return;
@@ -105,6 +109,8 @@
     if (!quote) return;
     const quantity = Number($('quantity').value);
     $('ticket-price').textContent = currency(quote.price);
+    $('price-symbol').textContent = quote.symbol;
+    $('new-price').placeholder = quote.price;
     $('order-total').textContent = Number.isSafeInteger(quantity) && quantity > 0 ? currency(Number(quote.price) * quantity) : '—';
     const owned = state.holdings.find(item => item.symbol === quote.symbol)?.quantity || 0;
     $('available').textContent = side === 'buy' ? `${currency(state.account.cash)} available to trade` : `${owned.toLocaleString()} ${quote.symbol} shares available to sell`;
@@ -121,8 +127,8 @@
     $('quotes').innerHTML = state.quotes.map(quote => `<button type="button" class="quote" data-symbol="${escapeHTML(quote.symbol)}" aria-label="Trade ${escapeHTML(quote.symbol)}" aria-pressed="false"><span class="instrument"><span class="instrument-mark" aria-hidden="true">${escapeHTML(quote.symbol.slice(0,1))}</span><span class="instrument-name"><strong>${escapeHTML(quote.symbol)}</strong><small>${escapeHTML(quote.name)}</small></span></span><span class="price">${currency(quote.price)}</span><span class="quote-arrow" aria-hidden="true">↗</span></button>`).join('');
     $('symbol').innerHTML = state.quotes.map(quote => `<option value="${escapeHTML(quote.symbol)}">${escapeHTML(quote.symbol)} · ${escapeHTML(quote.name)}</option>`).join('');
     if (state.quotes.some(quote => quote.symbol === selected)) $('symbol').value = selected;
-    $('holdings').innerHTML = state.holdings.length ? state.holdings.map(item => `<tr><td><strong>${escapeHTML(item.symbol)}</strong></td><td class="num">${item.quantity.toLocaleString()}</td><td class="num">${currency(item.average_cost)}</td><td class="num">${currency(item.market_value)}</td><td class="num">${currency(item.unrealized_pnl)}</td></tr>`).join('') : '<tr><td colspan="5" class="empty"><strong>Your first position starts here.</strong>Select an asset and place a paper buy to get going.</td></tr>';
-    $('orders').innerHTML = state.orders.length ? state.orders.map(order => `<tr><td>${escapeHTML(new Date(order.created_at).toLocaleString('en-US', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}))}</td><td><strong>${escapeHTML(order.symbol)}</strong></td><td><span class="trade-side ${order.side === 'sell' ? 'sell' : ''}">${escapeHTML(order.side.toUpperCase())}</span></td><td class="num">${order.quantity.toLocaleString()}</td><td class="num">${currency(order.price)}</td><td class="num">${currency(order.total)}</td><td>Filled</td></tr>`).join('') : '<tr><td colspan="7" class="empty"><strong>A fresh start, with every trade recorded.</strong>Your filled orders will appear here.</td></tr>';
+    $('holdings').innerHTML = state.holdings.length ? state.holdings.map(item => `<tr><td><strong>${escapeHTML(item.symbol)}</strong></td><td class="num">${item.quantity.toLocaleString()}</td><td class="num">${currency(item.average_cost)}</td><td class="num">${currency(item.market_value)}</td><td class="num">${currency(item.unrealized_pnl)}</td><td class="num">${currency(item.stop_price)}<span class="stop-type">${item.stop_type === 'trailing' ? 'TRAIL' : 'HARD'}</span></td></tr>`).join('') : '<tr><td colspan="6" class="empty"><strong>Your first position starts here.</strong>Select an asset and place a paper buy to get going.</td></tr>';
+    $('orders').innerHTML = state.orders.length ? state.orders.map(order => `<tr><td>${escapeHTML(new Date(order.created_at).toLocaleString('en-US', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}))}</td><td><strong>${escapeHTML(order.symbol)}</strong></td><td><span class="trade-side ${order.side === 'sell' ? 'sell' : ''}">${escapeHTML(order.side.toUpperCase())}</span></td><td class="num">${order.quantity.toLocaleString()}</td><td class="num">${currency(order.price)}</td><td class="num">${currency(order.total)}</td><td>${STOP_LABELS[order.trigger] || 'Filled'}</td></tr>`).join('') : '<tr><td colspan="7" class="empty"><strong>A fresh start, with every trade recorded.</strong>Your filled orders will appear here.</td></tr>';
     $('order-count').textContent = `${state.orders.length} RECENT FILL${state.orders.length === 1 ? '' : 'S'}`;
     const percent = Number(state.account.total_value) > 0 ? Number(state.account.holdings_value) / Number(state.account.total_value) * 100 : 0;
     $('allocation-invested').style.width = `${percent}%`;
@@ -154,6 +160,26 @@
   $('symbol').addEventListener('change', () => { status(''); updateTicket(); });
   $('quantity').addEventListener('input', () => { status(''); updateTicket(); });
   $('refresh').addEventListener('click', refresh);
+  async function movePrices(url, body) {
+    if (!state || sending || loading || moving) return;
+    const seen = new Set(state.orders.map(order => order.id));
+    moving = true; status('Updating prices…', false, 'price-status'); setControls();
+    try {
+      const response = await fetch(url, {method:'POST', headers:{'Content-Type':'application/json','X-Paper-Trade':'1'}, body:JSON.stringify(body), signal:AbortSignal.timeout(10000)});
+      const result = await response.json();
+      if (!response.ok) { status(typeof result.detail === 'string' ? result.detail : 'Enter a price in whole cents.', true, 'price-status'); return; }
+      state = result; render();
+      const stops = state.orders.filter(order => order.trigger && !seen.has(order.id));
+      status(stops.length ? stops.map(order => `${STOP_LABELS[order.trigger]} sold ${order.quantity} ${order.symbol} at ${currency(order.price)}.`).join(' ') : 'Prices updated. No stops hit.', false, 'price-status');
+    } catch {
+      status('Prices not confirmed. Select Refresh to see current prices.', true, 'price-status');
+    } finally { moving = false; setControls(); }
+  }
+  $('price-form').addEventListener('submit', event => {
+    event.preventDefault();
+    if ($('price-form').reportValidity()) movePrices('/api/quotes', {symbol:$('symbol').value, price:$('new-price').value});
+  });
+  $('tick').addEventListener('click', () => movePrices('/api/tick'));
   $('order-form').addEventListener('submit', async event => {
     event.preventDefault();
     if (!state || sending || loading) return;
