@@ -52,6 +52,15 @@ class Holding(models.Model):
     ladder_level = models.PositiveSmallIntegerField(default=0)
 
 
+class Alert(models.Model):
+    """Automatic orders and risk events for the dashboard; the newest 500 are kept."""
+
+    severity = models.CharField(max_length=8)  # "info", "warning" or "critical"
+    symbol = models.CharField(max_length=5, blank=True)
+    message = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class Order(models.Model):
     client_order_id = models.UUIDField(unique=True)
     symbol = models.CharField(max_length=5)

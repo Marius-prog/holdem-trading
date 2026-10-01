@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 from django.db import transaction
 from django.db.models import F
 
+from .alerts import alert, order_alert, recent
 from .models import Account, DcaPlan, Holding, Order, Quote
 
 # Starting prices. Current prices live in Quote and move via set_price and tick.
@@ -223,6 +224,7 @@ def get_state() -> dict:
         },
         "holdings": holdings,
         "orders": [order_data(order) for order in Order.objects.all()[:100]],
+        "alerts": recent(),
     }
 
 
@@ -244,7 +246,7 @@ def sell(
         holding.save(update_fields=["quantity"])
     else:
         holding.delete()
-    return Order.objects.create(
+    order = Order.objects.create(
         client_order_id=client_order_id,
         symbol=holding.symbol,
         side="sell",
@@ -253,6 +255,8 @@ def sell(
         total=total,
         trigger=trigger,
     )
+    order_alert(order)
+    return order
 
 
 def buy(
@@ -267,6 +271,7 @@ def buy(
     total = price * quantity
     account.cash -= total
     account.save(update_fields=["cash"])
+    was_trailing = holding is not None and holding.trail_peak is not None
     if holding:
         cost = holding.average_cost * holding.quantity + total
         holding.quantity += quantity
@@ -277,7 +282,7 @@ def buy(
         Holding.objects.create(
             symbol=symbol, quantity=quantity, average_cost=price, entry_price=price
         )
-    return Order.objects.create(
+    order = Order.objects.create(
         client_order_id=client_order_id,
         symbol=symbol,
         side="buy",
@@ -286,6 +291,13 @@ def buy(
         total=total,
         trigger=trigger,
     )
+    order_alert(order)
+    if was_trailing:
+        stop = stop_price(holding)
+        alert(
+            "info", f"{symbol} stop reset to a hard stop at ${stop:,} after adding shares.", symbol
+        )
+    return order
 
 
 @transaction.atomic
@@ -366,8 +378,17 @@ def apply_rules(symbol: str, price: Decimal, stops_only: bool = False) -> None:
     else:
         raise_stop_at = holding.trail_peak
     if price >= raise_stop_at:
+        upgrading = holding.trail_peak is None
         holding.trail_peak = price
         holding.save(update_fields=["trail_peak"])
+        if upgrading:
+            trail = STOPS.get(symbol, DEFAULT_STOPS)[2]
+            stop = stop_price(holding)
+            alert(
+                "info",
+                f"{symbol} stop now trails {trail:.0%} below its peak (stop ${stop:,}).",
+                symbol,
+            )
     if price <= stop_price(holding):
         trigger = "hard_stop" if holding.trail_peak is None else "trailing_stop"
         sell(account, holding, holding.quantity, price, uuid4(), trigger)
@@ -431,6 +452,13 @@ def re_enter(symbol: str, price: Decimal) -> None:
     quote.reentry_limit = (price * (1 - REENTRY_DISCOUNT)).quantize(CENT) if can_place else None
     quote.reentry_move = quote.moves if can_place else None
     quote.save(update_fields=["reentry_limit", "reentry_move"])
+    if can_place:
+        limit = quote.reentry_limit
+        alert(
+            "info",
+            f"Re-entry limit for {symbol}: buy {REENTRY_SHARES} at ${limit:,} or lower.",
+            symbol,
+        )
 
 
 def dca_plan(symbol: str) -> DcaPlan:
@@ -501,14 +529,36 @@ def move_price(symbol: str, price: Decimal) -> None:
             dca_buy(plan_symbol, burst=True)
 
 
+def buys_halted() -> bool:
+    account, _ = Account.objects.get_or_create(pk=1)
+    return equity(account, load_prices()) < halt_below(account)
+
+
+def alert_kill_switch(was_halted: bool) -> None:
+    """Announce the kill switch turning on or off across a price change."""
+    account, _ = Account.objects.get_or_create(pk=1)
+    value, threshold = equity(account, load_prices()), halt_below(account)
+    if value < threshold and not was_halted:
+        alert(
+            "critical",
+            f"Kill switch on: portfolio value ${value:,} is below ${threshold:,} "
+            f"({1 - KILL_SWITCH_DRAWDOWN:.0%} of its ${account.equity_peak:,} peak). "
+            "New buys are paused.",
+        )
+    elif was_halted and value >= threshold:
+        alert("info", "Kill switch off: portfolio value recovered; buys resume.")
+
+
 @transaction.atomic
 def set_price(symbol: str, raw_price: str) -> dict:
     if symbol not in QUOTES and symbol not in INDEXES:
         raise TradeError("Choose a supported symbol.")
     price = parse_price(raw_price)
     load_prices()
+    was_halted = buys_halted()
     move_price(symbol, price)
     record_equity_peak()
+    alert_kill_switch(was_halted)
     return get_state()
 
 
@@ -521,12 +571,14 @@ def reset_kill_switch() -> dict:
         raise TradeError("The kill switch is not on; there is nothing to reset.")
     account.equity_peak = value
     account.save(update_fields=["equity_peak"])
+    alert("info", f"Kill switch reset: peak restarted at ${value:,}.")
     return get_state()
 
 
 @transaction.atomic
 def tick() -> dict:
     prices = load_prices()
+    was_halted = buys_halted()
     # QQQ moves first, so the rules for every quote in this tick see the new regime.
     for symbol in sorted(prices, key=lambda symbol: symbol != REGIME_SYMBOL):
         price = prices[symbol]
@@ -536,4 +588,5 @@ def tick() -> dict:
             moved += CENT if bps > 0 else -CENT  # small prices still move by a cent
         move_price(symbol, min(MAX_PRICE, max(CENT, moved)))
     record_equity_peak()
+    alert_kill_switch(was_halted)
     return get_state()
