@@ -79,7 +79,8 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   profit-taking or re-entry. **Start SPY DCA** in Market watch buys 4 shares at
   once and 4 more every 7 SPY price changes (one "week"), up to 39 shares or a
   $30,000 position value, then holds. When QQQ crosses back above its average,
-  DCA buys the rest up to 39 at once and holds. A stop-out starts a new cycle
+  DCA buys the rest up to 39 at once and holds (if cash runs short, the weekly
+  buys continue instead). A stop-out starts a new cycle
   that buys again 7 changes later. The kill switch pauses DCA buys, and **Stop
   SPY DCA** ends them while keeping the position. Buys show as DCA buy or DCA
   burst.

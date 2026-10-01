@@ -105,6 +105,16 @@ class SpyDcaTests(ApiTestCase):
         self.assertEqual(Order.objects.order_by("-id").first().trigger, "dca_burst")
         self.assertEqual(self.dca()["phase"], "holding")
 
+    def test_burst_short_on_cash_keeps_accumulating_weekly(self):
+        self.toggle(True)  # 4 shares
+        Account.objects.filter(pk=1).update(cash=Decimal("700.00"), equity_peak=Decimal("3000.00"))
+        self.set_price("QQQ", "470.00")
+        self.set_price("QQQ", "500.00")  # cross-up: cash for 1 of the 35
+        self.assertEqual((self.spy_shares(), self.dca()["phase"]), (5, "dca"))
+        Account.objects.filter(pk=1).update(cash=Decimal("90000.00"))
+        self.tick_spy(7)
+        self.assertEqual(self.spy_shares(), 9)
+
     def test_kill_switch_pauses_dca_buys(self):
         self.client.get("/api/state")  # create the account
         Account.objects.filter(pk=1).update(equity_peak=Decimal("200000.00"))
