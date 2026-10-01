@@ -36,7 +36,7 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
 - A new database receives $100,000 in virtual cash on its first account read.
 - Six simulated quotes start at fixed demo prices and persist in SQLite. Set a
   symbol's price in Market watch, or use **Next tick** to move every price by up
-  to 3% either way. Orders fill immediately at the current server price, with no
+  to 3% either way (a nonzero step moves a price at least one cent). Orders fill immediately at the current server price, with no
   fees; an order request cannot supply its fill price.
 - Monetary calculations use Decimal. A database transaction updates cash,
   holdings, and the order together. SQLite transactions acquire the write lock

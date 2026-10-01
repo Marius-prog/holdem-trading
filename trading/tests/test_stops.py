@@ -147,6 +147,14 @@ class StopProtectionTests(TestCase):
             self.assertIn("cash above", response.json()["detail"])
         self.assertEqual(get_state(), before)
 
+    def test_tick_moves_small_prices_by_at_least_one_cent(self):
+        self.set_price("NVDA", "0.10")
+        for bps, expected in [(-300, "0.09"), (300, "0.10"), (1, "0.11"), (0, "0.11")]:
+            with patch("trading.services.random.randint", return_value=bps):
+                state = self.client.post("/api/tick", headers=HEADERS).json()
+            price = next(item["price"] for item in state["quotes"] if item["symbol"] == "NVDA")
+            self.assertEqual(price, expected, bps)
+
     def test_tick_applies_stops_and_never_drops_price_below_one_cent(self):
         self.buy()
         self.set_price("AAPL", "172.00")
