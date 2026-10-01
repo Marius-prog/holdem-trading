@@ -110,6 +110,12 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   resume once the value is back at the threshold, or after **Reset kill switch**
   (shown only while buys are halted), which restarts the peak at the current
   value. Closing every position does not lift the halt on its own.
+- Alerts: automatic orders (stops as warnings; profit takes, ladder, re-entry
+  and DCA buys as info), a stop switching to trailing, a re-entry limit being
+  placed, and the kill switch turning on (critical), off or being reset are
+  recorded as alerts. The newest 500 are kept and the dashboard's Alerts panel
+  shows the latest 20. Manual orders raise no alerts, and nothing is sent
+  outside the app.
 - Paper cash is capped at $1,000,000,000,000.00 so SQLite keeps it exact to the
   cent. A sale, or a price move whose automatic sale would pass the cap, is refused
   and nothing changes.
