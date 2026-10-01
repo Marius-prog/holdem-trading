@@ -47,7 +47,9 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   returns the original fill; reusing a UUID for a different order is rejected.
   The browser retains an unconfirmed submission within the tab and offers a
   safe retry before accepting another order.
-- Buying more of a held symbol re-averages its cost.
+- Buying more of a held symbol re-averages its cost and restarts its stop as a
+  hard stop on the new average. If the price is already 7% above that average,
+  the trailing stop starts again from the current price.
 - Every position has a stop. It starts as a hard stop 25% below average cost.
   Once the price reaches 7% above average cost, it becomes a trailing stop 12%
   below the highest price since then, and it only moves up. When a price change
