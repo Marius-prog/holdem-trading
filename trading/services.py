@@ -1,5 +1,5 @@
 import random
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from uuid import UUID, uuid4
 
 from django.db import transaction
@@ -90,9 +90,12 @@ def record_equity_peak() -> None:
 
 
 def stop_price(holding: Holding) -> Decimal:
+    """Rounded down, so a stop never rounds up to the price (e.g. a $0.01 position)."""
     if holding.trail_peak is None:
-        return (holding.average_cost * (1 - HARD_STOP)).quantize(CENT)
-    return (holding.trail_peak * (1 - TRAIL)).quantize(CENT)
+        stop = holding.average_cost * (1 - HARD_STOP)
+    else:
+        stop = holding.trail_peak * (1 - TRAIL)
+    return stop.quantize(CENT, rounding=ROUND_DOWN)
 
 
 @transaction.atomic

@@ -78,7 +78,7 @@ class StopProtectionTests(TestCase):
         self.assertEqual(self.holding("TSLA")["stop_type"], "hard")
         self.set_price("TSLA", "276.09")
         holding = self.holding("TSLA")
-        self.assertEqual((holding["stop_type"], holding["stop_price"]), ("trailing", "242.96"))
+        self.assertEqual((holding["stop_type"], holding["stop_price"]), ("trailing", "242.95"))
         self.set_price("TSLA", "300.00")
         self.assertEqual(self.holding("TSLA")["stop_price"], "264.00")
         self.set_price("TSLA", "280.00")
@@ -118,7 +118,7 @@ class StopProtectionTests(TestCase):
         self.assertEqual((holding["stop_type"], holding["stop_price"]), ("trailing", "98.56"))
 
     def test_new_position_at_one_cent_is_not_stopped_out_by_its_own_buy(self):
-        self.set_price("AAPL", "0.01")  # 0.75 x 0.01 rounds to a 0.01 stop
+        self.set_price("AAPL", "0.01")
         self.buy("AAPL", 5)
         self.assertEqual(Holding.objects.get().quantity, 5)
         self.assertEqual(Order.objects.count(), 1)
@@ -212,6 +212,15 @@ class StopProtectionTests(TestCase):
         risk = self.client.get("/api/state").json()["risk"]
         self.assertEqual((risk["equity_peak"], risk["buys_halted"]), ("100000.00", False))
         self.buy("MSFT", 1)
+
+    def test_stops_round_down_so_cent_positions_are_not_at_their_stop(self):
+        for symbol, price, stop in [("AAPL", "0.01", "0.00"), ("MSFT", "0.02", "0.01")]:
+            self.set_price(symbol, price)
+            self.buy(symbol, 5)
+            self.buy(symbol, 5)  # an add re-runs the stop rules at the same price
+            holding = self.holding(symbol)
+            self.assertEqual((holding["quantity"], holding["stop_price"]), (10, stop))
+        self.assertFalse(Order.objects.filter(side="sell").exists())
 
     def test_set_price_requires_header_and_rejects_invalid_input(self):
         self.buy()
