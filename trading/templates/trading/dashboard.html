@@ -68,7 +68,7 @@
           <div class="ticket-details"><div class="detail-row"><span class="muted">Order type</span><span>Market · simulated</span></div><div class="detail-row"><span class="muted">Trading fee</span><span class="mono">$0.00</span></div><div class="detail-row"><span>Estimated total</span><span class="mono" id="order-total">—</span></div></div>
           <button class="submit" type="submit" id="submit-order" disabled>Place paper buy</button>
           <p id="order-status" class="status" role="status" aria-live="polite"></p>
-          <p class="ticket-help">Fills immediately at the displayed demo price. Positions auto-sell at a 25% stop, which trails 12% once up 7%, and sell 30% at +15% and again at +25%.<br>Virtual funds only. No real orders are sent.</p>
+          <p class="ticket-help">Fills immediately at the displayed demo price. Positions auto-sell at a 25% stop, which trails 12% once up 7%, sell 30% at +15% and again at +25%, and buy more on set dips below the entry price.<br>Virtual funds only. No real orders are sent.</p>
         </form>
         <div class="ticket-bottom"><span class="circle" aria-hidden="true">i</span><div><strong>Learn with a clean slate</strong>Your account starts with $100,000 in virtual cash. Trades stay saved between visits.</div></div>
       </section>
@@ -83,7 +83,7 @@
   const currency = value => new Intl.NumberFormat('en-US', {style:'currency', currency:'USD'}).format(Number(value));
   const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const pendingKey = 'paperdesk.pending-order';
-  const TRIGGER_LABELS = {hard_stop:'Hard stop', trailing_stop:'Trailing stop', profit_take:'Profit take'};
+  const TRIGGER_LABELS = {hard_stop:'Hard stop', trailing_stop:'Trailing stop', profit_take:'Profit take', ladder:'Ladder buy'};
   let state = null, side = 'buy', sending = false, loading = false, moving = false, pending = null;
   try { pending = JSON.parse(sessionStorage.getItem(pendingKey)); } catch { /* Storage may be unavailable. */ }
   if (pending && (typeof pending.symbol !== 'string' || !['buy','sell'].includes(pending.side) || !Number.isInteger(pending.quantity) || typeof pending.client_order_id !== 'string')) pending = null;
@@ -173,7 +173,7 @@
       if (!response.ok) { status(typeof result.detail === 'string' ? result.detail : 'Enter a price in whole cents.', true, 'price-status'); return; }
       state = result; render();
       const fills = state.orders.filter(order => order.trigger && !seen.has(order.id)).reverse();
-      status(fills.length ? fills.map(order => `${TRIGGER_LABELS[order.trigger]} sold ${order.quantity} ${order.symbol} at ${currency(order.price)}.`).join(' ') : 'Prices updated. No automatic sales.', false, 'price-status');
+      status(fills.length ? fills.map(order => `${TRIGGER_LABELS[order.trigger]}: ${order.quantity} ${order.symbol} at ${currency(order.price)}.`).join(' ') : 'Prices updated. No automatic orders.', false, 'price-status');
     } catch {
       status('Prices not confirmed. Select Refresh to see current prices.', true, 'price-status');
     } finally { moving = false; setControls(); }

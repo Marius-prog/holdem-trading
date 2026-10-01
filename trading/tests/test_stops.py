@@ -46,7 +46,8 @@ class StopProtectionTests(TestCase):
 
     def test_price_above_stop_moves_value_and_keeps_position(self):
         self.buy()
-        response = self.set_price("AAPL", "171.00")
+        Holding.objects.update(ladder_level=3)  # ladder used up, so only the stop applies
+        response = self.set_price("AAPL", "171.00")  # 1 cent above the 170.64 stop
         self.assertEqual(response.status_code, 200, response.text)
         state = response.json()
         quote = next(item for item in state["quotes"] if item["symbol"] == "AAPL")
@@ -90,12 +91,12 @@ class StopProtectionTests(TestCase):
 
     def test_buy_at_moved_price_fills_there_and_reaverages_cost(self):
         self.buy()
-        self.set_price("AAPL", "200.00")
-        self.assertEqual(self.buy()["price"], "200.00")
+        self.set_price("AAPL", "215.00")
+        self.assertEqual(self.buy()["price"], "215.00")
         holding = self.holding("AAPL")
         self.assertEqual(holding["quantity"], 4)
-        self.assertEqual(holding["average_cost"], "213.76")
-        self.assertEqual(holding["stop_price"], "160.32")
+        self.assertEqual(holding["average_cost"], "221.26")
+        self.assertEqual(holding["stop_price"], "165.94")
 
     def test_adding_shares_resets_trailing_stop_to_hard_stop_on_new_average(self):
         self.set_price("AAPL", "100.00")
@@ -255,6 +256,98 @@ class StopProtectionTests(TestCase):
             self.assertEqual((holding["quantity"], holding["stop_price"]), (10, stop))
         self.assertFalse(Order.objects.filter(side="sell").exists())
 
+    def ladder_buys(self):
+        return [
+            (o.quantity, str(o.price))
+            for o in Order.objects.filter(trigger="ladder").order_by("id")
+        ]
+
+    def test_ladder_buys_10_15_15_at_7_14_21_percent_below_entry(self):
+        self.buy("AAPL", 10)  # entry 227.52
+        for price, shares in [
+            ("211.60", 10),
+            ("211.59", 20),
+            ("195.67", 20),
+            ("195.66", 35),
+            ("179.74", 50),
+        ]:
+            self.set_price("AAPL", price)
+            self.assertEqual(Holding.objects.get().quantity, shares, price)
+        self.assertEqual(self.ladder_buys(), [(10, "211.59"), (15, "195.66"), (15, "179.74")])
+        self.set_price("AAPL", "175.00")
+        self.assertEqual(len(self.ladder_buys()), 3)  # each level once per position
+
+    def test_ladder_tiers_follow_volatility(self):
+        self.buy("NVDA", 10)  # medium: -10%
+        self.buy("TSLA", 10)  # high: -15%
+        self.set_price("NVDA", "109.26")  # 121.40 x 0.90
+        self.set_price("TSLA", "220.00")  # -14.7%: not yet
+        self.set_price("TSLA", "219.31")  # 258.02 x 0.85 = 219.317
+        self.assertEqual(
+            sorted((o.symbol, o.quantity) for o in Order.objects.filter(trigger="ladder")),
+            [("NVDA", 10), ("TSLA", 10)],
+        )
+
+    def test_gap_through_all_ladder_levels_buys_them_in_order(self):
+        self.buy("AAPL", 10)
+        state = self.set_price("AAPL", "179.74").json()
+        self.assertEqual(state["holdings"][0]["quantity"], 50)
+        self.assertEqual(self.ladder_buys(), [(10, "179.74"), (15, "179.74"), (15, "179.74")])
+        self.assertEqual(state["holdings"][0]["stop_type"], "hard")
+
+    def test_ladder_buy_shrinks_to_the_14k_cost_cap(self):
+        self.buy("NVDA", 100)  # 12,140.00
+        self.set_price("NVDA", "109.26")  # L1: 10 shares, cost 13,232.60
+        self.set_price("NVDA", "97.12")  # L2: room 767.40 / 97.12 = 7 shares
+        self.assertEqual(self.ladder_buys(), [(10, "109.26"), (7, "97.12")])
+
+    def test_stop_wins_over_ladder_on_a_gap_down(self):
+        self.buy("TSLA", 10)  # hard stop 193.51; L1 at 219.31
+        self.set_price("TSLA", "190.00")
+        self.assertFalse(Holding.objects.exists())
+        self.assertEqual(self.ladder_buys(), [])
+
+    def test_ladder_waits_while_price_is_above_average_cost(self):
+        self.client.get("/api/state")  # seed quotes
+        Holding.objects.create(
+            symbol="AAPL",
+            quantity=200,
+            average_cost=Decimal("60.00"),
+            entry_price=Decimal("100.00"),
+        )
+        self.set_price("AAPL", "85.00")  # -15% from entry but +41.7% on the average
+        self.assertEqual(self.ladder_buys(), [])
+        self.assertEqual(Order.objects.filter(trigger="profit_take").count(), 2)
+
+    def test_ladders_pause_while_kill_switch_is_on(self):
+        self.buy("AAPL", 10)
+        Account.objects.filter(pk=1).update(equity_peak=Decimal("200000.00"))
+        self.set_price("AAPL", "211.59")
+        self.assertEqual(self.ladder_buys(), [])
+        self.client.post("/api/kill-switch/reset", headers=HEADERS)
+        self.set_price("AAPL", "211.59")
+        self.assertEqual(self.ladder_buys(), [(10, "211.59")])
+
+    def test_ladders_wait_for_cash_and_never_fire_inside_a_buy(self):
+        self.buy("AAPL", 10)
+        Account.objects.filter(pk=1).update(cash=Decimal("100.00"), equity_peak=Decimal("2300.00"))
+        self.set_price("AAPL", "211.59")  # L1 due, but no cash for even one share
+        self.assertEqual(self.ladder_buys(), [])
+        Account.objects.filter(pk=1).update(cash=Decimal("5000.00"))
+        self.buy("AAPL", 1)  # a manual buy does not run the ladder
+        self.assertEqual((Holding.objects.get().quantity, self.ladder_buys()), (11, []))
+        self.set_price("AAPL", "211.59")
+        self.assertEqual(self.ladder_buys(), [(10, "211.59")])
+
+    def test_ladder_levels_and_entry_reset_after_the_position_closes(self):
+        self.buy("AAPL", 10)
+        self.set_price("AAPL", "211.59")  # L1
+        self.set_price("AAPL", "150.00")  # hard stop closes all 20
+        self.assertFalse(Holding.objects.exists())
+        self.buy("AAPL", 10)  # new entry 150.00
+        self.set_price("AAPL", "139.50")  # 150 x 0.93
+        self.assertEqual(self.ladder_buys()[-1], (10, "139.50"))
+
     def test_set_price_requires_header_and_rejects_invalid_input(self):
         self.buy()
         before = get_state()
@@ -290,6 +383,7 @@ class StopProtectionTests(TestCase):
 
     def test_cash_cap_refuses_sales_and_rolls_back_price_moves(self):
         self.buy()
+        Holding.objects.update(ladder_level=3)  # ladder used up, so the stop is reachable
         self.set_price("AAPL", "172.00")  # just above the 170.64 hard stop
         Account.objects.filter(pk=1).update(cash=MAX_CASH - Decimal("100.00"))
         before = get_state()
@@ -315,6 +409,7 @@ class StopProtectionTests(TestCase):
 
     def test_tick_applies_stops_and_never_drops_price_below_one_cent(self):
         self.buy()
+        Holding.objects.update(ladder_level=3)  # ladder used up, so the stop is reachable
         self.set_price("AAPL", "172.00")
         self.set_price("MSFT", "0.01")
         with patch("trading.services.random.randint", return_value=-300):

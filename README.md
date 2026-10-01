@@ -63,6 +63,17 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   levels reset when the position closes. A level whose share count rounds to 0
   stays open (and later levels wait) until the position is large enough. Takes
   run only on price changes, never inside a buy. These sales show as Profit take.
+- Ladder buys: when a price change drops a price below the position's entry price
+  (its first fill) by a ladder level, more shares buy at the new price. AAPL,
+  MSFT and GOOGL buy 10, 15 and 15 shares at 7%, 14% and 21% below entry; AMZN
+  and NVDA at 10%, 20% and 30%; TSLA at 15%, 25% and 35%. Levels go in order, a
+  gap through several buys them all, and each fires once per position (reset on
+  close). A ladder buy shrinks to keep the position's cost basis within
+  $14,000 and to the cash on hand; a level that would buy nothing stays open.
+  The stop is checked first, ladders wait while the price is at or above the
+  average cost or while the kill switch is on, and they run only on price
+  changes, never inside a manual buy. These buys show as
+  Ladder buy.
 - Kill switch: the account tracks its highest portfolio value after each price
   change. While the value is more than 15% below that peak, new buys are refused
   and the dashboard says so; sells, stops and profit-taking keep working. Buys
