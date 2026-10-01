@@ -437,7 +437,8 @@ def dca_plan() -> DcaPlan:
 
 def dca_buy(burst: bool = False) -> None:
     """Buy DCA_SHARES once DCA_EVERY SPY changes have passed since the last buy, or the
-    rest up to the target at once (burst). Hold at the target or the value cap."""
+    rest up to the target at once (burst). Hold once at the target or the value cap; a
+    burst cut short by cash leaves the weekly buys running."""
     plan = dca_plan()
     holding = Holding.objects.filter(symbol=DCA_SYMBOL).first()
     if plan.phase == "holding" and not holding:  # sold by hand: accumulate again
@@ -458,7 +459,7 @@ def dca_buy(burst: bool = False) -> None:
         trigger = "dca_burst" if burst else "dca"
         buy(account, holding, DCA_SYMBOL, shares, quote.price, uuid4(), trigger)
         plan.last_buy_move = quote.moves
-    if burst or held + shares >= DCA_TARGET or shares == room:
+    if held + shares >= DCA_TARGET or shares == room:  # a burst short on cash keeps going
         plan.phase = "holding"
     plan.save(update_fields=["phase", "last_buy_move"])
 
