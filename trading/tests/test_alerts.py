@@ -75,6 +75,20 @@ class AlertTests(ApiTestCase):
             self.messages()[0], ("info", "Kill switch reset: peak restarted at $83,528.72.")
         )
 
+    def test_adding_to_a_trailing_position_announces_the_reset_stop(self):
+        self.client.post("/api/dca", json={"symbol": "SPY", "enabled": True}, headers=HEADERS)
+        for _ in range(6):
+            self.set_price("SPY", "656.77")
+        self.set_price("SPY", "710.00")  # upgrade, then the weekly DCA buy
+        self.assertEqual(
+            self.messages()[:3],
+            [
+                ("info", "SPY stop reset to a hard stop at $601.37 after adding shares."),
+                ("info", "DCA bought 4 SPY at $710.00."),
+                ("info", "SPY stop now trails 5% below its peak (stop $674.50)."),
+            ],
+        )
+
     def test_state_lists_the_latest_20_newest_first(self):
         for n in range(25):
             alerts.alert("info", f"note {n}")

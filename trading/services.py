@@ -271,6 +271,7 @@ def buy(
     total = price * quantity
     account.cash -= total
     account.save(update_fields=["cash"])
+    was_trailing = holding is not None and holding.trail_peak is not None
     if holding:
         cost = holding.average_cost * holding.quantity + total
         holding.quantity += quantity
@@ -291,6 +292,11 @@ def buy(
         trigger=trigger,
     )
     order_alert(order)
+    if was_trailing:
+        stop = stop_price(holding)
+        alert(
+            "info", f"{symbol} stop reset to a hard stop at ${stop:,} after adding shares.", symbol
+        )
     return order
 
 
