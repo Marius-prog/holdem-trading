@@ -56,8 +56,13 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   reaches the stop, the whole position sells at the new price, which is below
   the stop after a gap. These sales show as Hard stop or Trailing stop in Recent
   activity.
+- Profit-taking: when a price change reaches 15% above average cost, 30% of the
+  shares sell; at 25% above, another 30% of the original position sells (3/7 of
+  what is left), and the rest rides the trailing stop. Share counts round down,
+  each level fires once per position, a gap through both takes both, and the
+  levels reset when the position closes. These sales show as Profit take.
 - Paper cash is capped at $1,000,000,000,000.00 so SQLite keeps it exact to the
-  cent. A sale, or a price move whose stop sale would pass the cap, is refused
+  cent. A sale, or a price move whose automatic sale would pass the cap, is refused
   and nothing changes.
 - This demo does not model spread, liquidity, exchange hours, or real execution.
 

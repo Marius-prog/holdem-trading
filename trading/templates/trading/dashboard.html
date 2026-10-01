@@ -67,7 +67,7 @@
           <div class="ticket-details"><div class="detail-row"><span class="muted">Order type</span><span>Market · simulated</span></div><div class="detail-row"><span class="muted">Trading fee</span><span class="mono">$0.00</span></div><div class="detail-row"><span>Estimated total</span><span class="mono" id="order-total">—</span></div></div>
           <button class="submit" type="submit" id="submit-order" disabled>Place paper buy</button>
           <p id="order-status" class="status" role="status" aria-live="polite"></p>
-          <p class="ticket-help">Fills immediately at the displayed demo price. Positions auto-sell at a 25% stop, which trails 12% once up 7%.<br>Virtual funds only. No real orders are sent.</p>
+          <p class="ticket-help">Fills immediately at the displayed demo price. Positions auto-sell at a 25% stop, which trails 12% once up 7%, and sell 30% at +15% and again at +25%.<br>Virtual funds only. No real orders are sent.</p>
         </form>
         <div class="ticket-bottom"><span class="circle" aria-hidden="true">i</span><div><strong>Learn with a clean slate</strong>Your account starts with $100,000 in virtual cash. Trades stay saved between visits.</div></div>
       </section>
@@ -82,7 +82,7 @@
   const currency = value => new Intl.NumberFormat('en-US', {style:'currency', currency:'USD'}).format(Number(value));
   const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   const pendingKey = 'paperdesk.pending-order';
-  const STOP_LABELS = {hard_stop:'Hard stop', trailing_stop:'Trailing stop'};
+  const TRIGGER_LABELS = {hard_stop:'Hard stop', trailing_stop:'Trailing stop', profit_take:'Profit take'};
   let state = null, side = 'buy', sending = false, loading = false, moving = false, pending = null;
   try { pending = JSON.parse(sessionStorage.getItem(pendingKey)); } catch { /* Storage may be unavailable. */ }
   if (pending && (typeof pending.symbol !== 'string' || !['buy','sell'].includes(pending.side) || !Number.isInteger(pending.quantity) || typeof pending.client_order_id !== 'string')) pending = null;
@@ -128,7 +128,7 @@
     $('symbol').innerHTML = state.quotes.map(quote => `<option value="${escapeHTML(quote.symbol)}">${escapeHTML(quote.symbol)} · ${escapeHTML(quote.name)}</option>`).join('');
     if (state.quotes.some(quote => quote.symbol === selected)) $('symbol').value = selected;
     $('holdings').innerHTML = state.holdings.length ? state.holdings.map(item => `<tr><td><strong>${escapeHTML(item.symbol)}</strong></td><td class="num">${item.quantity.toLocaleString()}</td><td class="num">${currency(item.average_cost)}</td><td class="num">${currency(item.market_value)}</td><td class="num">${currency(item.unrealized_pnl)}</td><td class="num">${currency(item.stop_price)}<span class="stop-type">${item.stop_type === 'trailing' ? 'TRAIL' : 'HARD'}</span></td></tr>`).join('') : '<tr><td colspan="6" class="empty"><strong>Your first position starts here.</strong>Select an asset and place a paper buy to get going.</td></tr>';
-    $('orders').innerHTML = state.orders.length ? state.orders.map(order => `<tr><td>${escapeHTML(new Date(order.created_at).toLocaleString('en-US', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}))}</td><td><strong>${escapeHTML(order.symbol)}</strong></td><td><span class="trade-side ${order.side === 'sell' ? 'sell' : ''}">${escapeHTML(order.side.toUpperCase())}</span></td><td class="num">${order.quantity.toLocaleString()}</td><td class="num">${currency(order.price)}</td><td class="num">${currency(order.total)}</td><td>${STOP_LABELS[order.trigger] || 'Filled'}</td></tr>`).join('') : '<tr><td colspan="7" class="empty"><strong>A fresh start, with every trade recorded.</strong>Your filled orders will appear here.</td></tr>';
+    $('orders').innerHTML = state.orders.length ? state.orders.map(order => `<tr><td>${escapeHTML(new Date(order.created_at).toLocaleString('en-US', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}))}</td><td><strong>${escapeHTML(order.symbol)}</strong></td><td><span class="trade-side ${order.side === 'sell' ? 'sell' : ''}">${escapeHTML(order.side.toUpperCase())}</span></td><td class="num">${order.quantity.toLocaleString()}</td><td class="num">${currency(order.price)}</td><td class="num">${currency(order.total)}</td><td>${TRIGGER_LABELS[order.trigger] || 'Filled'}</td></tr>`).join('') : '<tr><td colspan="7" class="empty"><strong>A fresh start, with every trade recorded.</strong>Your filled orders will appear here.</td></tr>';
     $('order-count').textContent = `${state.orders.length} RECENT FILL${state.orders.length === 1 ? '' : 'S'}`;
     const percent = Number(state.account.total_value) > 0 ? Number(state.account.holdings_value) / Number(state.account.total_value) * 100 : 0;
     $('allocation-invested').style.width = `${percent}%`;
@@ -169,8 +169,8 @@
       const result = await response.json();
       if (!response.ok) { status(typeof result.detail === 'string' ? result.detail : 'Enter a price in whole cents.', true, 'price-status'); return; }
       state = result; render();
-      const stops = state.orders.filter(order => order.trigger && !seen.has(order.id));
-      status(stops.length ? stops.map(order => `${STOP_LABELS[order.trigger]} sold ${order.quantity} ${order.symbol} at ${currency(order.price)}.`).join(' ') : 'Prices updated. No stops hit.', false, 'price-status');
+      const fills = state.orders.filter(order => order.trigger && !seen.has(order.id)).reverse();
+      status(fills.length ? fills.map(order => `${TRIGGER_LABELS[order.trigger]} sold ${order.quantity} ${order.symbol} at ${currency(order.price)}.`).join(' ') : 'Prices updated. No automatic sales.', false, 'price-status');
     } catch {
       status('Prices not confirmed. Select Refresh to see current prices.', true, 'price-status');
     } finally { moving = false; setControls(); }

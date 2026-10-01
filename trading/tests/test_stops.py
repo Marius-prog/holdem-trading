@@ -86,7 +86,7 @@ class StopProtectionTests(TestCase):
         state = self.set_price("TSLA", "264.00").json()
         self.assertEqual(state["holdings"], [])
         self.assertEqual(state["orders"][0]["trigger"], "trailing_stop")
-        self.assertEqual(state["orders"][0]["total"], "2640.00")
+        self.assertEqual(state["orders"][0]["total"], "1848.00")  # 7 left after +15% take
 
     def test_buy_at_moved_price_fills_there_and_reaverages_cost(self):
         self.buy()
@@ -122,6 +122,44 @@ class StopProtectionTests(TestCase):
         self.buy("AAPL", 5)
         self.assertEqual(Holding.objects.get().quantity, 5)
         self.assertEqual(Order.objects.count(), 1)
+
+    def test_profit_takes_sell_30_percent_at_15_and_25_percent_gains(self):
+        self.buy("TSLA", 10)  # 258.02
+        for price, shares in [("296.72", 10), ("296.73", 7), ("322.52", 7), ("322.53", 4)]:
+            self.set_price("TSLA", price)
+            self.assertEqual(Holding.objects.get().quantity, shares, price)
+        takes = Order.objects.filter(trigger="profit_take").order_by("id")
+        self.assertEqual(
+            [(o.quantity, str(o.price)) for o in takes], [(3, "296.73"), (3, "322.53")]
+        )
+        state = self.set_price("TSLA", "400.00").json()
+        self.assertEqual(Holding.objects.get().quantity, 4)
+        self.assertEqual(Order.objects.filter(trigger="profit_take").count(), 2)
+        self.assertEqual(state["holdings"][0]["stop_price"], "352.00")
+
+    def test_gap_through_both_profit_levels_takes_both(self):
+        self.buy("TSLA", 10)
+        state = self.set_price("TSLA", "400.00").json()
+        self.assertEqual(state["holdings"][0]["quantity"], 4)
+        self.assertEqual(
+            [(o["trigger"], o["quantity"]) for o in state["orders"][:2]],
+            [("profit_take", 3), ("profit_take", 3)],
+        )
+
+    def test_profit_takes_round_down_and_skip_zero_share_sales(self):
+        self.buy("AAPL", 2)
+        self.set_price("AAPL", "300.00")
+        self.assertEqual(Holding.objects.get().quantity, 2)
+        self.assertEqual(Order.objects.count(), 1)
+
+    def test_profit_levels_reset_after_the_position_closes(self):
+        self.buy("TSLA", 10)
+        self.set_price("TSLA", "400.00")  # both takes; trailing stop 352.00
+        self.set_price("TSLA", "352.00")  # trailing stop closes the last 4
+        self.assertFalse(Holding.objects.exists())
+        self.buy("TSLA", 10)  # at 352.00
+        self.set_price("TSLA", "404.80")  # +15% on the new position
+        self.assertEqual(Holding.objects.get().quantity, 7)
 
     def test_set_price_requires_header_and_rejects_invalid_input(self):
         self.buy()
