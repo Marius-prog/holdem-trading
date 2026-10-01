@@ -52,10 +52,10 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   the trailing stop starts again from the current price.
 - Every position has a stop. It starts as a hard stop 25% below average cost.
   Once the price reaches 7% above average cost, it becomes a trailing stop 12%
-  below the highest price since then, and it only moves up. When a price change
-  reaches the stop, the whole position sells at the new price, which is below
-  the stop after a gap. These sales show as Hard stop or Trailing stop in Recent
-  activity.
+  below the highest price since then, and it only moves up. Stops round down to
+  the cent. When a price change reaches the stop, the whole position sells at
+  the new price, which is below the stop after a gap. These sales show as Hard
+  stop or Trailing stop in Recent activity.
 - Profit-taking: when a price change reaches 15% above average cost, 30% of the
   shares sell; at 25% above, another 30% of the original position sells (3/7 of
   what is left), and the rest rides the trailing stop. Share counts round down,
