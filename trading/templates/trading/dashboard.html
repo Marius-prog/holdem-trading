@@ -40,6 +40,7 @@
     <header class="topbar"><div class="breadcrumb">Workspace <span>/ &nbsp; Overview</span></div><div class="top-actions"><span class="pill"><span class="dot"></span>Paper trading</span><button type="button" class="plain-button" id="refresh">↻ Refresh</button></div></header>
     <div class="intro"><div><div class="eyebrow muted">Your trading workspace</div><h1>Room to find your edge.</h1><p>Make your next move. Every trade here is practice.</p></div><div class="date"><div id="today"></div><div>USD · Simulated market</div></div></div>
     <div id="global-error" class="global-error" role="alert" hidden></div>
+    <div id="kill-switch" class="global-error" role="status" hidden></div>
     <noscript><div class="global-error">Enable JavaScript to view your account and place paper trades.</div></noscript>
     <section class="summary" aria-label="Account summary">
       <div class="summary-card"><div class="summary-label">Portfolio value</div><div class="summary-value money" id="total-value">—</div><div class="summary-sub"><span class="arrow">↗</span> Cash + current holdings</div></div>
@@ -121,6 +122,8 @@
     const selected = pending?.symbol || $('symbol').value;
     $('total-value').textContent = currency(state.account.total_value);
     $('cash').textContent = currency(state.account.cash);
+    $('kill-switch').hidden = !state.risk.buys_halted;
+    $('kill-switch').textContent = `Kill switch on: portfolio value is more than 15% below its ${currency(state.risk.equity_peak)} peak. New buys are paused until it is back to ${currency(state.risk.halt_below)}. Sells and stops still work.`;
     $('holdings-value').textContent = currency(state.account.holdings_value);
     $('position-count').textContent = `${state.holdings.length} open position${state.holdings.length === 1 ? '' : 's'}`;
     $('positions-tag').textContent = `${state.holdings.length} ASSET${state.holdings.length === 1 ? '' : 'S'}`;

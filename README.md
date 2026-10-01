@@ -61,6 +61,10 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   what is left), and the rest rides the trailing stop. Share counts round down,
   each level fires once per position, a gap through both takes both, and the
   levels reset when the position closes. These sales show as Profit take.
+- Kill switch: the account tracks its highest portfolio value after each price
+  change. While the value is more than 15% below that peak, new buys are refused
+  and the dashboard says so; sells, stops and profit-taking keep working, and
+  buys resume once the value is back at the threshold.
 - Paper cash is capped at $1,000,000,000,000.00 so SQLite keeps it exact to the
   cent. A sale, or a price move whose automatic sale would pass the cap, is refused
   and nothing changes.

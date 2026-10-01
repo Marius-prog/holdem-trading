@@ -161,6 +161,37 @@ class StopProtectionTests(TestCase):
         self.set_price("TSLA", "404.80")  # +15% on the new position
         self.assertEqual(Holding.objects.get().quantity, 7)
 
+    def test_equity_peak_follows_price_rises_and_sets_the_halt_threshold(self):
+        risk = self.client.get("/api/state").json()["risk"]
+        self.assertEqual(
+            risk, {"equity_peak": "100000.00", "halt_below": "85000.00", "buys_halted": False}
+        )
+        self.buy("AAPL", 100)  # 22,752.00
+        self.set_price("AAPL", "240.00")  # equity 101,248.00
+        self.set_price("AAPL", "230.00")  # the peak does not fall
+        risk = self.client.get("/api/state").json()["risk"]
+        self.assertEqual((risk["equity_peak"], risk["halt_below"]), ("101248.00", "86060.80"))
+
+    def test_kill_switch_refuses_buys_until_equity_recovers_and_allows_sells(self):
+        first = self.buy("AAPL", 100)
+        Account.objects.filter(pk=1).update(equity_peak=Decimal("120000.00"))  # halt < 102,000
+        self.assertTrue(self.client.get("/api/state").json()["risk"]["buys_halted"])
+        order = {"symbol": "MSFT", "side": "buy", "quantity": 1, "client_order_id": str(uuid4())}
+        refused = self.client.post("/api/orders", json=order, headers=HEADERS)
+        self.assertEqual(refused.status_code, 400)
+        self.assertIn("Kill switch", refused.json()["detail"])
+        replay = {key: first[key] for key in ("symbol", "side", "quantity", "client_order_id")}
+        self.assertEqual(
+            self.client.post("/api/orders", json=replay, headers=HEADERS).json(), first
+        )
+        sell = {**order, "symbol": "AAPL", "side": "sell", "client_order_id": str(uuid4())}
+        self.assertEqual(
+            self.client.post("/api/orders", json=sell, headers=HEADERS).status_code, 200
+        )
+        self.set_price("AAPL", "250.00")  # equity 102,225.52: recovered
+        self.assertFalse(self.client.get("/api/state").json()["risk"]["buys_halted"])
+        self.buy("MSFT", 1)
+
     def test_set_price_requires_header_and_rejects_invalid_input(self):
         self.buy()
         before = get_state()
