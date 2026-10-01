@@ -117,8 +117,8 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   within cash, paused by the kill switch), sells of a third of the position.
   Trades more than 45 days old, other tickers and duplicates are recorded
   without an order (duplicates are refused). Copied positions have no hard stop;
-  once up 15% a 10% trailing stop covers the whole position, and they get no
-  ladders, profit-taking or re-entry. Orders show as Copy trade.
+  once up 15% a 10% trailing stop covers the whole position (including shares
+  copied later), and they get no ladders, profit-taking or re-entry. Orders show as Copy trade.
 - Alerts: automatic orders (stops as warnings; profit takes, ladder, re-entry
   and DCA buys as info), a stop switching to trailing, a re-entry limit being
   placed, and the kill switch turning on (critical), off or being reset are

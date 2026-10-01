@@ -4,6 +4,7 @@ from uuid import UUID, uuid4
 
 from django.db import transaction
 from django.db.models import F
+from django.utils import timezone
 
 from .alerts import alert, order_alert, recent
 from .models import Account, DcaPlan, Filing, Holding, Order, Quote
@@ -246,6 +247,7 @@ def get_state() -> dict:
         "orders": [order_data(order) for order in Order.objects.all()[:100]],
         "alerts": recent(),
         "copy": {
+            "today": timezone.localdate().isoformat(),  # the server's date for the form
             "universe": list(COPY_SYMBOLS),
             "buckets": [label for label, _ in COPY_BUCKETS],
             "filings": [
@@ -306,12 +308,16 @@ def buy(
     total = price * quantity
     account.cash -= total
     account.save(update_fields=["cash"])
-    was_trailing = holding is not None and holding.trail_peak is not None
+    # Added shares restart at the hard stop on the new average. A position without a
+    # hard stop (a copied one) keeps its trailing stop, which then covers the new shares.
+    keeps_trail = STOPS.get(symbol, DEFAULT_STOPS)[0] is None
+    was_trailing = holding is not None and holding.trail_peak is not None and not keeps_trail
     if holding:
         cost = holding.average_cost * holding.quantity + total
         holding.quantity += quantity
         holding.average_cost = (cost / holding.quantity).quantize(CENT)
-        holding.trail_peak = None  # Added shares restart at the hard stop on the new average.
+        if not keeps_trail:
+            holding.trail_peak = None
         holding.save(update_fields=["quantity", "average_cost", "trail_peak"])
     else:
         Holding.objects.create(
@@ -328,14 +334,10 @@ def buy(
     )
     order_alert(order)
     if was_trailing:
-        if (stop := stop_price(holding)) is None:  # no hard stop (copied positions)
-            message = (
-                f"{symbol} trailing stop removed after adding shares; it restarts once the "
-                f"position is up {STOPS[symbol][1]:.0%}."
-            )
-        else:
-            message = f"{symbol} stop reset to a hard stop at ${stop:,} after adding shares."
-        alert("info", message, symbol)
+        stop = stop_price(holding)
+        alert(
+            "info", f"{symbol} stop reset to a hard stop at ${stop:,} after adding shares.", symbol
+        )
     return order
 
 

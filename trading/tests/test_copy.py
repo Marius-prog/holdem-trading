@@ -96,23 +96,47 @@ class CopyTraderTests(ApiTestCase):
     def alerts(self):
         return [a["message"] for a in self.client.get("/api/state").json()["alerts"]]
 
-    def test_adding_to_a_trailing_copy_position_drops_the_trail_below_15_percent(self):
-        self.file(bucket=1)  # 5 JPM at 293.88
-        self.set_price("JPM", "340.00")  # +15.7%: trailing 10%
-        self.file(bucket=1, days_ago=4)  # 4 more at 340.00: avg 314.38, +8.1%
-        self.assertIsNone(self.holding("JPM")["stop_price"])
-        self.assertEqual(
-            self.alerts()[0],
-            "JPM trailing stop removed after adding shares; it restarts once the position "
-            "is up 15%.",
-        )
+    def test_adding_to_a_trailing_copy_position_extends_the_trail(self):
+        self.set_price("KO", "100.00")
+        self.file("KO", bucket=4)  # 50 at 100.00
+        self.set_price("KO", "115.00")
+        self.set_price("KO", "120.00")  # trailing: stop 108.00
+        self.file("KO", bucket=4, days_ago=4)  # 41 more at 120.00: avg 109.01, +10%
+        self.assertEqual(self.shares("KO"), 91)
+        self.assertEqual(self.holding("KO")["stop_price"], "108.00")
+        self.assertEqual(self.alerts()[0], "Copy trade bought 41 KO at $120.00.")
+        self.set_price("KO", "60.00")  # the trail covers all 91 shares
+        self.assertEqual(self.shares("KO"), 0)
 
     def test_adding_to_a_copy_position_still_up_15_percent_keeps_trailing(self):
         self.file(bucket=1)  # 5 JPM at 293.88
         self.set_price("JPM", "400.00")
         self.file(bucket=0, days_ago=4)  # 1 more at 400.00: avg 311.57, still +28%
         self.assertEqual(self.holding("JPM")["stop_price"], "360.00")
-        self.assertEqual(self.alerts()[0], "JPM stop now trails 10% below its peak (stop $360.00).")
+        self.assertEqual(self.alerts()[0], "Copy trade bought 1 JPM at $400.00.")
+
+    def test_state_gives_the_server_date_for_the_form(self):
+        today = self.client.get("/api/state").json()["copy"]["today"]
+        self.assertEqual(today, timezone.localdate().isoformat())
+
+    def test_mirror_size_below_one_share_says_so(self):
+        self.file("GS", bucket=0)  # $500 < $858.00
+        self.assertEqual(
+            self.outcome(), "Not mirrored: the $500.00 mirror size is below one GS share ($858.00)."
+        )
+
+    def test_sell_of_a_tiny_position_explains_the_rounding(self):
+        self.set_price("KO", "200.00")
+        self.file("KO", bucket=0)  # 2 shares
+        self.file("KO", side="sell", days_ago=4)
+        self.assertEqual(
+            self.outcome(), "Not mirrored: a third of 2 KO shares rounds down to zero."
+        )
+
+    def test_duplicates_ignore_filer_case(self):
+        self.file(filer="A. Member")
+        self.assertEqual(self.file(filer="a. member").status_code, 409)
+        self.assertEqual(self.shares(), 5)
 
     def test_filings_are_validated_and_guarded(self):
         self.assertEqual(self.file(headers={}).status_code, 403)
@@ -123,6 +147,7 @@ class CopyTraderTests(ApiTestCase):
             {"bucket": -1},
             {"days_ago": -1},
             {"filer": "  "},
+            {"filer": "\u200b"},
             {"filer": "x" * 81},
             {"symbol": "TOOLONG"},
             {"symbol": "jp m"},

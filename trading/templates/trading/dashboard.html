@@ -93,7 +93,6 @@
   try { pending = JSON.parse(sessionStorage.getItem(pendingKey)); } catch { /* Storage may be unavailable. */ }
   if (pending && (typeof pending.symbol !== 'string' || !['buy','sell'].includes(pending.side) || !Number.isInteger(pending.quantity) || typeof pending.client_order_id !== 'string')) pending = null;
   if (pending) { side = pending.side; $('quantity').value = pending.quantity; }
-  $('traded-on').value = $('traded-on').max = new Date().toLocaleDateString('en-CA');
   $('today').textContent = new Date().toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'});
   function savePending(value) {
     pending = value;
@@ -156,6 +155,8 @@
     $('holdings').innerHTML = state.holdings.length ? state.holdings.map(item => `<tr><td><strong>${escapeHTML(item.symbol)}</strong></td><td class="num">${item.quantity.toLocaleString()}</td><td class="num">${currency(item.average_cost)}</td><td class="num">${currency(item.market_value)}</td><td class="num">${currency(item.unrealized_pnl)}</td><td class="num">${item.stop_price === null ? '—' : `${currency(item.stop_price)}<span class="stop-type">${item.stop_type === 'trailing' ? 'TRAIL' : 'HARD'}</span>`}</td></tr>`).join('') : '<tr><td colspan="6" class="empty"><strong>Your first position starts here.</strong>Select an asset and place a paper buy to get going.</td></tr>';
     $('orders').innerHTML = state.orders.length ? state.orders.map(order => `<tr><td>${escapeHTML(new Date(order.created_at).toLocaleString('en-US', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}))}</td><td><strong>${escapeHTML(order.symbol)}</strong></td><td><span class="trade-side ${order.side === 'sell' ? 'sell' : ''}">${escapeHTML(order.side.toUpperCase())}</span></td><td class="num">${order.quantity.toLocaleString()}</td><td class="num">${currency(order.price)}</td><td class="num">${currency(order.total)}</td><td>${TRIGGER_LABELS[order.trigger] || 'Filled'}</td></tr>`).join('') : '<tr><td colspan="7" class="empty"><strong>A fresh start, with every trade recorded.</strong>Your filled orders will appear here.</td></tr>';
     $('alerts').innerHTML = state.alerts.length ? state.alerts.map(item => `<li><span class="alert-icon ${escapeHTML(item.severity)}" role="img" aria-label="${escapeHTML(item.severity)}">${ALERT_ICONS[item.severity] || 'i'}</span><span class="alert-time">${escapeHTML(new Date(item.created_at).toLocaleString('en-US', {month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'}))}</span><span>${escapeHTML(item.message)}</span></li>`).join('') : '<li class="empty"><strong>No alerts yet.</strong>Stops, profit takes, ladder, re-entry and DCA orders and kill-switch changes will appear here.</li>';
+    $('traded-on').max = state.copy.today;
+    if (!$('traded-on').value) $('traded-on').value = state.copy.today;
     if (!$('filing-size').options.length) {
       $('filing-size').innerHTML = state.copy.buckets.map((label, index) => `<option value="${index}">${escapeHTML(label)}</option>`).join('');
       $('copy-universe').innerHTML = state.copy.universe.map(symbol => `<option value="${escapeHTML(symbol)}">`).join('');
