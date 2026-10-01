@@ -31,6 +31,8 @@ TRAIL = Decimal("0.12")
 # shares), rounded down. 3/7 of what is left after the first take is another 30% of the
 # position, leaving 40% to ride the trailing stop.
 PROFIT_TAKES = ((Decimal("0.15"), 3, 10), (Decimal("0.25"), 3, 7))
+# Kill switch: new buys are refused while equity is more than 15% below its peak.
+KILL_SWITCH_DRAWDOWN = Decimal("0.15")
 
 
 class TradeError(ValueError):
@@ -66,6 +68,27 @@ def load_prices() -> dict[str, Decimal]:
     return prices
 
 
+def equity(account: Account, prices: dict[str, Decimal]) -> Decimal:
+    return account.cash + sum(
+        (prices[h.symbol] * h.quantity for h in Holding.objects.all()), Decimal("0.00")
+    )
+
+
+def halt_below(account: Account) -> Decimal:
+    return (account.equity_peak * (1 - KILL_SWITCH_DRAWDOWN)).quantize(CENT)
+
+
+def record_equity_peak() -> None:
+    """Raise the peak to current equity. A flat account restarts it at its cash, so a
+    halt cannot outlive the positions that caused it."""
+    account, _ = Account.objects.get_or_create(pk=1)
+    # ponytail: capped like cash so SQLite keeps it exact; the switch is moot at that size.
+    peak = min(equity(account, load_prices()), MAX_CASH)
+    if peak > account.equity_peak or not Holding.objects.exists():
+        account.equity_peak = peak
+        account.save(update_fields=["equity_peak"])
+
+
 def stop_price(holding: Holding) -> Decimal:
     if holding.trail_peak is None:
         return (holding.average_cost * (1 - HARD_STOP)).quantize(CENT)
@@ -99,6 +122,11 @@ def get_state() -> dict:
             "cash": money(account.cash),
             "holdings_value": money(holdings_value),
             "total_value": money(account.cash + holdings_value),
+        },
+        "risk": {
+            "equity_peak": money(account.equity_peak),
+            "halt_below": money(halt_below(account)),
+            "buys_halted": account.cash + holdings_value < halt_below(account),
         },
         "quotes": [
             {"symbol": symbol, "name": name, "price": money(prices[symbol])}
@@ -153,14 +181,23 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
             raise TradeError("This order ID was already used for a different order.", 409)
         return order_data(existing)
 
+    record_equity_peak()
     account, _ = Account.objects.get_or_create(pk=1)
     holding = Holding.objects.filter(symbol=symbol).first()
-    price = load_prices()[symbol]
+    prices = load_prices()
+    price = prices[symbol]
     if side == "sell":
         if not holding or quantity > holding.quantity:
             raise TradeError("Insufficient shares to sell; short selling is not supported.")
-        return order_data(sell(account, holding, quantity, price, client_order_id))
+        order = sell(account, holding, quantity, price, client_order_id)
+        record_equity_peak()
+        return order_data(order)
 
+    if equity(account, prices) < halt_below(account):
+        raise TradeError(
+            f"Kill switch: portfolio value is more than 15% below its "
+            f"${account.equity_peak:,} peak. Buys resume at ${halt_below(account):,}."
+        )
     total = price * quantity
     if total > account.cash:
         raise TradeError("Insufficient paper cash for this order.")
@@ -240,6 +277,7 @@ def set_price(symbol: str, raw_price: str) -> dict:
     price = parse_price(raw_price)
     load_prices()
     move_price(symbol, price)
+    record_equity_peak()
     return get_state()
 
 
@@ -251,4 +289,5 @@ def tick() -> dict:
         if bps and moved == price:
             moved += CENT if bps > 0 else -CENT  # small prices still move by a cent
         move_price(symbol, min(MAX_PRICE, max(CENT, moved)))
+    record_equity_peak()
     return get_state()
