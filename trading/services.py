@@ -4,9 +4,10 @@ from uuid import UUID, uuid4
 
 from django.db import transaction
 from django.db.models import F
+from django.utils import timezone
 
 from .alerts import alert, order_alert, recent
-from .models import Account, DcaPlan, Holding, Order, Quote
+from .models import Account, DcaPlan, Filing, Holding, Order, Quote
 
 # Starting prices. Current prices live in Quote and move via set_price and tick.
 QUOTES = {
@@ -18,6 +19,9 @@ QUOTES = {
     "TSLA": ("Tesla", Decimal("258.02")),
     "SPY": ("SPDR S&P 500 ETF", Decimal("656.77")),
     "GLD": ("SPDR Gold Shares", Decimal("400.00")),
+    "JPM": ("JPMorgan Chase", Decimal("293.88")),
+    "GS": ("Goldman Sachs", Decimal("858.00")),
+    "KO": ("Coca-Cola", Decimal("77.41")),
 }
 # Market regime: QQQ is a non-tradable index that moves like the quotes. Ladder buys
 # pause while it is below the average of its last 20 prices (one per change).
@@ -35,7 +39,19 @@ MAX_CASH = Decimal("1000000000000.00")
 # trailing stop, trailing distance). The trailing stop only ratchets up.
 DEFAULT_STOPS = (Decimal("0.25"), Decimal("0.07"), Decimal("0.12"))
 DCA_STOPS = (Decimal("0.12"), Decimal("0.07"), Decimal("0.05"))  # Strategy 3
-STOPS = {"SPY": DCA_STOPS, "GLD": DCA_STOPS}
+# Strategy 2: copied positions have no hard stop; once up 15% a 10% trailing stop
+# covers the whole position. No ladders, profit takes or re-entry for these symbols.
+COPY_SYMBOLS = ("JPM", "GS", "KO")
+COPY_STOPS = (None, Decimal("0.15"), Decimal("0.10"))
+STOPS = {"SPY": DCA_STOPS, "GLD": DCA_STOPS} | dict.fromkeys(COPY_SYMBOLS, COPY_STOPS)
+# Mirror size for each disclosed trade-size bucket.
+COPY_BUCKETS = (
+    ("$1K–$15K", Decimal("500.00")),
+    ("$15K–$50K", Decimal("1500.00")),
+    ("$50K–$100K", Decimal("2500.00")),
+    ("$100K–$250K", Decimal("4000.00")),
+    ("$250K+", Decimal("5000.00")),
+)
 # Strategy 3: dollar-cost average into SPY and a GLD sleeve. Each buys its shares once per
 # 7 of its own price changes (a "week"), up to a target or a value cap, then holds. No
 # ladders, profit takes or re-entry for these symbols.
@@ -141,10 +157,13 @@ def market_regime() -> tuple[Decimal, Decimal, bool]:
     return quote.price, average, quote.price < average
 
 
-def stop_price(holding: Holding) -> Decimal:
-    """Rounded down, so a stop never rounds up to the price (e.g. a $0.01 position)."""
+def stop_price(holding: Holding) -> Decimal | None:
+    """Rounded down, so a stop never rounds up to the price (e.g. a $0.01 position).
+    None while a position without a hard stop (a copied one) has not started trailing."""
     hard, _, trail = STOPS.get(holding.symbol, DEFAULT_STOPS)
     if holding.trail_peak is None:
+        if hard is None:
+            return None
         stop = holding.average_cost * (1 - hard)
     else:
         stop = holding.trail_peak * (1 - trail)
@@ -191,8 +210,10 @@ def get_state() -> dict:
                 "price": money(price),
                 "market_value": money(market_value),
                 "unrealized_pnl": money((price - holding.average_cost) * holding.quantity),
-                "stop_price": money(stop_price(holding)),
-                "stop_type": "hard" if holding.trail_peak is None else "trailing",
+                "stop_price": None if (stop := stop_price(holding)) is None else money(stop),
+                "stop_type": "none"
+                if stop is None
+                else ("hard" if holding.trail_peak is None else "trailing"),
             }
         )
     return {
@@ -225,6 +246,22 @@ def get_state() -> dict:
         "holdings": holdings,
         "orders": [order_data(order) for order in Order.objects.all()[:100]],
         "alerts": recent(),
+        "copy": {
+            "today": timezone.localdate().isoformat(),  # the server's date for the form
+            "universe": list(COPY_SYMBOLS),
+            "buckets": [label for label, _ in COPY_BUCKETS],
+            "filings": [
+                {
+                    "filer": f.filer,
+                    "symbol": f.symbol,
+                    "side": f.side,
+                    "bucket": COPY_BUCKETS[f.bucket][0],
+                    "traded_on": f.traded_on.isoformat(),
+                    "outcome": f.outcome,
+                }
+                for f in Filing.objects.order_by("-id")[:20]
+            ],
+        },
     }
 
 
@@ -271,12 +308,16 @@ def buy(
     total = price * quantity
     account.cash -= total
     account.save(update_fields=["cash"])
-    was_trailing = holding is not None and holding.trail_peak is not None
+    # Added shares restart at the hard stop on the new average. A position without a
+    # hard stop (a copied one) keeps its trailing stop, which then covers the new shares.
+    keeps_trail = STOPS.get(symbol, DEFAULT_STOPS)[0] is None
+    was_trailing = holding is not None and holding.trail_peak is not None and not keeps_trail
     if holding:
         cost = holding.average_cost * holding.quantity + total
         holding.quantity += quantity
         holding.average_cost = (cost / holding.quantity).quantize(CENT)
-        holding.trail_peak = None  # Added shares restart at the hard stop on the new average.
+        if not keeps_trail:
+            holding.trail_peak = None
         holding.save(update_fields=["quantity", "average_cost", "trail_peak"])
     else:
         Holding.objects.create(
@@ -389,7 +430,7 @@ def apply_rules(symbol: str, price: Decimal, stops_only: bool = False) -> None:
                 f"{symbol} stop now trails {trail:.0%} below its peak (stop ${stop:,}).",
                 symbol,
             )
-    if price <= stop_price(holding):
+    if (stop := stop_price(holding)) is not None and price <= stop:
         trigger = "hard_stop" if holding.trail_peak is None else "trailing_stop"
         sell(account, holding, holding.quantity, price, uuid4(), trigger)
         if symbol in DCA_PLANS:  # start a new accumulation cycle a week from now
@@ -397,10 +438,10 @@ def apply_rules(symbol: str, price: Decimal, stops_only: bool = False) -> None:
             DcaPlan.objects.filter(symbol=symbol).update(
                 phase="dca", last_buy_move=moves, cycle=F("cycle") + 1
             )
-        else:
+        elif symbol not in COPY_SYMBOLS:
             Quote.objects.filter(symbol=symbol).update(stop_move=F("moves"))
         return
-    if stops_only or symbol in DCA_PLANS:
+    if stops_only or symbol in DCA_PLANS or symbol in COPY_SYMBOLS:
         return
     buy_ladder(account, holding, price)
     for level, (gain, numerator, denominator) in enumerate(PROFIT_TAKES, start=1):

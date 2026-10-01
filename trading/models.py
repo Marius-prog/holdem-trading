@@ -52,6 +52,25 @@ class Holding(models.Model):
     ladder_level = models.PositiveSmallIntegerField(default=0)
 
 
+class Filing(models.Model):
+    """A congressional trade disclosure entered for the copy trader, and what it did."""
+
+    filer = models.CharField(max_length=80)
+    symbol = models.CharField(max_length=5)
+    side = models.CharField(max_length=4)
+    bucket = models.PositiveSmallIntegerField()  # index into COPY_BUCKETS
+    traded_on = models.DateField()
+    outcome = models.CharField(max_length=120)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["filer", "symbol", "side", "bucket", "traded_on"], name="unique_filing"
+            )
+        ]
+
+
 class Alert(models.Model):
     """Automatic orders and risk events for the dashboard; the newest 500 are kept."""
 
@@ -69,7 +88,8 @@ class Order(models.Model):
     price = models.DecimalField(max_digits=12, decimal_places=2)
     total = models.DecimalField(max_digits=18, decimal_places=2)
     # "" for manual orders; "hard_stop", "trailing_stop" or "profit_take" for automatic
-    # sells; "ladder", "reentry", "dca" or "dca_burst" for automatic buys.
+    # sells; "ladder", "reentry", "dca" or "dca_burst" for automatic buys; "copy" for
+    # mirrored filings.
     trigger = models.CharField(max_length=13, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 

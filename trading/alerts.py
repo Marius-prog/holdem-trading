@@ -1,14 +1,15 @@
 from .models import Alert, Order
 
 MAX_ALERTS = 500
-ORDER_ALERTS = {  # trigger: (severity, verb)
-    "hard_stop": ("warning", "Hard stop sold"),
-    "trailing_stop": ("warning", "Trailing stop sold"),
-    "profit_take": ("info", "Profit take sold"),
-    "ladder": ("info", "Ladder bought"),
-    "reentry": ("info", "Re-entry bought"),
-    "dca": ("info", "DCA bought"),
-    "dca_burst": ("info", "DCA burst bought"),
+ORDER_ALERTS = {  # trigger: (severity, label)
+    "hard_stop": ("warning", "Hard stop"),
+    "trailing_stop": ("warning", "Trailing stop"),
+    "profit_take": ("info", "Profit take"),
+    "ladder": ("info", "Ladder"),
+    "reentry": ("info", "Re-entry"),
+    "dca": ("info", "DCA"),
+    "dca_burst": ("info", "DCA burst"),
+    "copy": ("info", "Copy trade"),
 }
 
 
@@ -24,10 +25,10 @@ def alert(severity: str, message: str, symbol: str = "") -> None:
 def order_alert(order: Order) -> None:
     """Announce an automatic order; manual orders (no trigger) stay quiet."""
     if order.trigger:
-        severity, verb = ORDER_ALERTS[order.trigger]
-        alert(
-            severity, f"{verb} {order.quantity} {order.symbol} at ${order.price:,}.", order.symbol
-        )
+        severity, label = ORDER_ALERTS[order.trigger]
+        verb = "bought" if order.side == "buy" else "sold"
+        message = f"{label} {verb} {order.quantity} {order.symbol} at ${order.price:,}."
+        alert(severity, message, order.symbol)
 
 
 def recent(limit: int = 20) -> list[dict]:

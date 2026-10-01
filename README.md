@@ -110,6 +110,15 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   resume once the value is back at the threshold, or after **Reset kill switch**
   (shown only while buys are halted), which restarts the peak at the current
   value. Closing every position does not lift the halt on its own.
+- Congress copy trader (Strategy 2): record a disclosed trade under Congress
+  filings (filer, ticker, buy or sell, size range, trade date); nothing is
+  scraped or preloaded. JPM, GS and KO filings are mirrored: buys at $500,
+  $1,500, $2,500, $4,000 or $5,000 by size range (up to $10,000 cost per stock,
+  within cash, paused by the kill switch), sells of a third of the position.
+  Trades more than 45 days old, other tickers and duplicates are recorded
+  without an order (duplicates are refused). Copied positions have no hard stop;
+  once up 15% a 10% trailing stop covers the whole position (including shares
+  copied later), and they get no ladders, profit-taking or re-entry. Orders show as Copy trade.
 - Alerts: automatic orders (stops as warnings; profit takes, ladder, re-entry
   and DCA buys as info), a stop switching to trailing, a re-entry limit being
   placed, and the kill switch turning on (critical), off or being reset are
@@ -139,6 +148,7 @@ PAPER_TRADING_DB=/tmp/paperdesk-demo.sqlite3 uv run python manage.py runbolt --h
 | `POST /api/orders` | Submit or replay a paper order |
 | `POST /api/quotes` | Set one symbol's (or QQQ's) price, apply the rules, return the new state |
 | `POST /api/tick` | Move every price by up to 3%, apply stops, return the new state |
+| `POST /api/filings` | `{"filer", "symbol", "side", "bucket": 0-4, "traded_on": "YYYY-MM-DD"}` records a filing and mirrors it |
 | `POST /api/dca` | `{"symbol": "SPY" or "GLD", "enabled": true}` starts that plan (buying now if due); `false` stops it |
 | `POST /api/kill-switch/reset` | While buys are halted, restart the equity peak at the current value |
 
