@@ -5,6 +5,11 @@ Owner task: qitem-20260930173923-9f6397fd. Scope: all new files in
 Candidate fingerprint: `evidence/candidate.sha256` (paths relative to this folder).
 No commit or publish performed.
 
+The manifest pins the QA-accepted candidate, which is commit `f3a14d6` (#1) in
+Marius-prog/holdem-trading. Later commits change covered files (#2: ruff 0.16.9
+lint/format of `config/settings.py`, `pyproject.toml`, `trading/services.py`,
+`trading/tests/test_trading.py`), so run `shasum -a 256 -c` at `f3a14d6`.
+
 ## Implemented contract
 
 Actual Django Bolt server; one local persisted paper account with $100,000 cash;
