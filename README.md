@@ -61,8 +61,8 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   what is left), and the rest rides the trailing stop. Share counts round down,
   each level fires once per position, a gap through both takes both, and the
   levels reset when the position closes. A level whose share count rounds to 0
-  stays open (and later levels wait) until the position is large enough. These
-  sales show as Profit take.
+  stays open (and later levels wait) until the position is large enough. Takes
+  run only on price changes, never inside a buy. These sales show as Profit take.
 - Kill switch: the account tracks its highest portfolio value after each price
   change. While the value is more than 15% below that peak, new buys are refused
   and the dashboard says so; sells, stops and profit-taking keep working. Buys

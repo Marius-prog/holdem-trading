@@ -161,6 +161,16 @@ class StopProtectionTests(TestCase):
         self.assertEqual(Holding.objects.get().quantity, 7)
         self.assertEqual(Order.objects.filter(trigger="profit_take").count(), 1)
 
+    def test_buying_never_triggers_profit_takes_they_wait_for_a_price_move(self):
+        self.set_price("MSFT", "100.00")
+        self.buy("MSFT", 3)
+        self.set_price("MSFT", "200.00")  # +100%, but 30% of 3 shares rounds to 0
+        self.buy("MSFT", 1)
+        self.assertEqual(Holding.objects.get().quantity, 4)
+        self.assertFalse(Order.objects.filter(trigger="profit_take").exists())
+        self.set_price("MSFT", "200.00")  # the next price move takes 1, then 1
+        self.assertEqual(Holding.objects.get().quantity, 2)
+
     def test_profit_levels_reset_after_the_position_closes(self):
         self.buy("TSLA", 10)
         self.set_price("TSLA", "400.00")  # both takes; trailing stop 352.00

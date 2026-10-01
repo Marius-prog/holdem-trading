@@ -223,11 +223,12 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
         total=total,
     )
     if holding:
-        apply_rules(symbol, price)  # Re-upgrades at once if already 7% above the new average.
+        # Re-upgrades at once if already 7% above the new average; takes wait for a price move.
+        apply_rules(symbol, price, take_profit=False)
     return order_data(order)
 
 
-def apply_rules(symbol: str, price: Decimal) -> None:
+def apply_rules(symbol: str, price: Decimal, take_profit: bool = True) -> None:
     """Upgrade or ratchet the stop at the new price, sell everything if it is hit,
     otherwise take any profit level reached.
 
@@ -247,6 +248,8 @@ def apply_rules(symbol: str, price: Decimal) -> None:
     if price <= stop_price(holding):
         trigger = "hard_stop" if holding.trail_peak is None else "trailing_stop"
         sell(account, holding, holding.quantity, price, uuid4(), trigger)
+        return
+    if not take_profit:
         return
     for level, (gain, numerator, denominator) in enumerate(PROFIT_TAKES, start=1):
         if holding.profit_level >= level:
