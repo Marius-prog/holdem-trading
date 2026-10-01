@@ -74,6 +74,12 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   average cost or while the kill switch is on, and they run only on price
   changes, never inside a manual buy. These buys show as
   Ladder buy.
+- Market regime: QQQ is a market index you cannot trade. It starts at $480.00,
+  moves with every Next tick (before the quotes, so their rules see the new
+  regime), and can be set in the Set price form. It keeps its
+  last 20 prices (one per change); while QQQ is below their average the market
+  is bearish and new ladder buys pause (stops, profit-taking, re-entry and your
+  own buys continue). Market watch shows QQQ, its average and the regime.
 - Re-entry after a stop-out: each price change of a symbol counts as one trading
   day, and the symbol keeps a 10-change moving average (EMA). After a stop sells
   a whole position, from the next change on, while the price is above its EMA, a
@@ -109,7 +115,7 @@ PAPER_TRADING_DB=/tmp/paperdesk-demo.sqlite3 uv run python manage.py runbolt --h
 | `GET /` | Browser workspace |
 | `GET /api/state` | Account, quotes, holdings, and latest 100 orders |
 | `POST /api/orders` | Submit or replay a paper order |
-| `POST /api/quotes` | Set one symbol's price, apply stops, return the new state |
+| `POST /api/quotes` | Set one symbol's (or QQQ's) price, apply the rules, return the new state |
 | `POST /api/tick` | Move every price by up to 3%, apply stops, return the new state |
 | `POST /api/kill-switch/reset` | While buys are halted, restart the equity peak at the current value |
 

@@ -16,6 +16,11 @@ QUOTES = {
     "AMZN": ("Amazon", Decimal("186.51")),
     "TSLA": ("Tesla", Decimal("258.02")),
 }
+# Market regime: QQQ is a non-tradable index that moves like the quotes. Ladder buys
+# pause while it is below the average of its last 20 prices (one per change).
+REGIME_SYMBOL = "QQQ"
+INDEXES = {REGIME_SYMBOL: ("Invesco QQQ", Decimal("480.00"))}
+REGIME_WINDOW = 20
 MAX_QUANTITY = 1_000_000
 CENT = Decimal("0.01")
 MAX_PRICE = Decimal("1000000.00")
@@ -84,7 +89,11 @@ def order_data(order: Order) -> dict:
 
 def load_prices() -> dict[str, Decimal]:
     prices = dict(Quote.objects.values_list("symbol", "price"))
-    missing = [Quote(symbol=s, price=p) for s, (_, p) in QUOTES.items() if s not in prices]
+    missing = [
+        Quote(symbol=s, price=p, history=[str(p)] if s in INDEXES else [])
+        for s, (_, p) in (QUOTES | INDEXES).items()
+        if s not in prices
+    ]
     if missing:
         Quote.objects.bulk_create(missing)
         prices |= {quote.symbol: quote.price for quote in missing}
@@ -113,6 +122,14 @@ def record_equity_peak() -> None:
         account.save(update_fields=["equity_peak"])
 
 
+def market_regime() -> tuple[Decimal, Decimal, bool]:
+    """QQQ price, the average of its recent prices, and whether it is below it."""
+    quote = Quote.objects.get(symbol=REGIME_SYMBOL)
+    history = [Decimal(p) for p in quote.history] or [quote.price]
+    average = sum(history) / len(history)
+    return quote.price, average, quote.price < average
+
+
 def stop_price(holding: Holding) -> Decimal:
     """Rounded down, so a stop never rounds up to the price (e.g. a $0.01 position)."""
     if holding.trail_peak is None:
@@ -126,6 +143,7 @@ def stop_price(holding: Holding) -> Decimal:
 def get_state() -> dict:
     account, _ = Account.objects.get_or_create(pk=1)
     prices = load_prices()
+    regime_price, regime_average, bearish = market_regime()
     reentries = dict(
         Quote.objects.filter(reentry_limit__isnull=False).values_list("symbol", "reentry_limit")
     )
@@ -167,6 +185,12 @@ def get_state() -> dict:
             }
             for symbol, (name, _) in QUOTES.items()
         ],
+        "market": {
+            "symbol": REGIME_SYMBOL,
+            "price": money(regime_price),
+            "average": money(regime_average.quantize(CENT)),
+            "bearish": bearish,
+        },
         "holdings": holdings,
         "orders": [order_data(order) for order in Order.objects.all()[:100]],
     }
@@ -278,8 +302,11 @@ def place_order(symbol: str, side: str, quantity: int, client_order_id: UUID) ->
 def buy_ladder(account: Account, holding: Holding, price: Decimal) -> None:
     """Buy each ladder level the price has dropped to, in order. A level that would buy
     nothing (cost cap, cash, or the kill switch) stays open with the ones after it.
-    Ladders average down, so they wait while the price is at or above average cost."""
+    Ladders average down, so they wait while the price is at or above average cost, and
+    pause while the market regime is bearish."""
     if price >= holding.average_cost or equity(account, load_prices()) < halt_below(account):
+        return
+    if market_regime()[2]:
         return
     entry = holding.entry_price or holding.average_cost
     for level, (drop, shares) in enumerate(LADDERS[holding.symbol], start=1):
@@ -377,14 +404,16 @@ def move_price(symbol: str, price: Decimal) -> None:
     quote.ema = (previous + EMA_ALPHA * (price - previous)).quantize(Decimal("0.0001"))
     quote.price = price
     quote.moves += 1
-    quote.save(update_fields=["price", "ema", "moves"])
+    if symbol == REGIME_SYMBOL:
+        quote.history = (quote.history + [str(price)])[-REGIME_WINDOW:]
+    quote.save(update_fields=["price", "ema", "moves", "history"])
     apply_rules(symbol, price)
     re_enter(symbol, price)
 
 
 @transaction.atomic
 def set_price(symbol: str, raw_price: str) -> dict:
-    if symbol not in QUOTES:
+    if symbol not in QUOTES and symbol not in INDEXES:
         raise TradeError("Choose a supported symbol.")
     price = parse_price(raw_price)
     load_prices()
@@ -407,7 +436,10 @@ def reset_kill_switch() -> dict:
 
 @transaction.atomic
 def tick() -> dict:
-    for symbol, price in load_prices().items():
+    prices = load_prices()
+    # QQQ moves first, so the rules for every quote in this tick see the new regime.
+    for symbol in sorted(prices, key=lambda symbol: symbol != REGIME_SYMBOL):
+        price = prices[symbol]
         bps = random.randint(-MAX_TICK_BPS, MAX_TICK_BPS)
         moved = (price * (1 + Decimal(bps) / 10_000)).quantize(CENT)
         if bps and moved == price:
