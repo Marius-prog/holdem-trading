@@ -74,6 +74,15 @@ surrounding OpenRig Node workspace; its setup does not change that workspace.
   average cost or while the kill switch is on, and they run only on price
   changes, never inside a manual buy. These buys show as
   Ladder buy.
+- SPY dollar-cost averaging (Strategy 3): SPY is a seventh quote with its own
+  stops (a 12% hard stop that becomes a 5% trailing stop at +7%) and no ladders,
+  profit-taking or re-entry. **Start SPY DCA** in Market watch buys 4 shares at
+  once and 4 more every 7 SPY price changes (one "week"), up to 39 shares or a
+  $30,000 position value, then holds. When QQQ crosses back above its average,
+  DCA buys the rest up to 39 at once and holds. A stop-out starts a new cycle
+  that buys again 7 changes later. The kill switch pauses DCA buys, and **Stop
+  SPY DCA** ends them while keeping the position. Buys show as DCA buy or DCA
+  burst.
 - Market regime: QQQ is a market index you cannot trade. It starts at $480.00,
   moves with every Next tick (before the quotes, so their rules see the new
   regime), and can be set in the Set price form. It keeps its
@@ -117,6 +126,7 @@ PAPER_TRADING_DB=/tmp/paperdesk-demo.sqlite3 uv run python manage.py runbolt --h
 | `POST /api/orders` | Submit or replay a paper order |
 | `POST /api/quotes` | Set one symbol's (or QQQ's) price, apply the rules, return the new state |
 | `POST /api/tick` | Move every price by up to 3%, apply stops, return the new state |
+| `POST /api/dca` | `{"enabled": true}` starts SPY DCA (buying now if due); `false` stops it |
 | `POST /api/kill-switch/reset` | While buys are halted, restart the equity peak at the current value |
 
 Money is returned as decimal strings. Order and price writes require the

@@ -28,6 +28,16 @@ class Quote(models.Model):
     history = models.JSONField(default=list, blank=True)
 
 
+class DcaPlan(models.Model):
+    """Strategy 3 dollar-cost averaging state for one symbol (SPY)."""
+
+    symbol = models.CharField(max_length=5, unique=True)
+    enabled = models.BooleanField(default=False)
+    phase = models.CharField(max_length=7, default="dca")  # "dca" or "holding"
+    last_buy_move = models.PositiveIntegerField(null=True, blank=True)
+    cycle = models.PositiveIntegerField(default=1)
+
+
 class Holding(models.Model):
     symbol = models.CharField(max_length=5, unique=True)
     quantity = models.PositiveIntegerField()
@@ -50,7 +60,7 @@ class Order(models.Model):
     price = models.DecimalField(max_digits=12, decimal_places=2)
     total = models.DecimalField(max_digits=18, decimal_places=2)
     # "" for manual orders; "hard_stop", "trailing_stop" or "profit_take" for automatic
-    # sells; "ladder" or "reentry" for automatic buys.
+    # sells; "ladder", "reentry", "dca" or "dca_burst" for automatic buys.
     trigger = models.CharField(max_length=13, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 

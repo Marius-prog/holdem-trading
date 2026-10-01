@@ -2,42 +2,12 @@ from decimal import Decimal
 from unittest.mock import patch
 from uuid import uuid4
 
-from django.test import TestCase
-from django_bolt.testing import TestClient
-
-from trading.api import api
 from trading.models import Account, Holding, Order, Quote
 from trading.services import MAX_CASH, get_state
+from trading.tests.base import HEADERS, ApiTestCase
 
-HEADERS = {"X-Paper-Trade": "1"}
 
-
-class StopProtectionTests(TestCase):
-    def setUp(self):
-        self.client = TestClient(api, base_url="http://testserver")
-        self.client.__enter__()
-        self.addCleanup(self.client.__exit__, None, None, None)
-
-    def buy(self, symbol="AAPL", quantity=2):
-        payload = {
-            "symbol": symbol,
-            "side": "buy",
-            "quantity": quantity,
-            "client_order_id": str(uuid4()),
-        }
-        response = self.client.post("/api/orders", json=payload, headers=HEADERS)
-        self.assertEqual(response.status_code, 200, response.text)
-        return response.json()
-
-    def set_price(self, symbol, price, headers=HEADERS):
-        return self.client.post(
-            "/api/quotes", json={"symbol": symbol, "price": price}, headers=headers
-        )
-
-    def holding(self, symbol):
-        state = self.client.get("/api/state").json()
-        return next((item for item in state["holdings"] if item["symbol"] == symbol), None)
-
+class StopProtectionTests(ApiTestCase):
     def test_buy_gets_hard_stop_25_percent_below_average_cost(self):
         self.buy()
         holding = self.holding("AAPL")

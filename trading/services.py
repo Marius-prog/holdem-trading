@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 from django.db import transaction
 from django.db.models import F
 
-from .models import Account, Holding, Order, Quote
+from .models import Account, DcaPlan, Holding, Order, Quote
 
 # Starting prices. Current prices live in Quote and move via set_price and tick.
 QUOTES = {
@@ -15,6 +15,7 @@ QUOTES = {
     "GOOGL": ("Alphabet", Decimal("165.85")),
     "AMZN": ("Amazon", Decimal("186.51")),
     "TSLA": ("Tesla", Decimal("258.02")),
+    "SPY": ("SPDR S&P 500 ETF", Decimal("656.77")),
 }
 # Market regime: QQQ is a non-tradable index that moves like the quotes. Ladder buys
 # pause while it is below the average of its last 20 prices (one per change).
@@ -28,11 +29,17 @@ MAX_TICK_BPS = 300  # Random tick step: up to 3% either way (at least a cent if 
 # SQLite stores decimals as REAL (~15 significant digits); this keeps cash exact to the cent.
 MAX_CASH = Decimal("1000000000000.00")
 
-# Stop protection: a hard stop below average cost, upgraded to a trailing stop
-# once the position gains enough. The trailing stop only ratchets up.
-HARD_STOP = Decimal("0.25")
-TRAIL_UPGRADE = Decimal("0.07")
-TRAIL = Decimal("0.12")
+# Stop protection per symbol: (hard stop below average cost, gain that upgrades it to a
+# trailing stop, trailing distance). The trailing stop only ratchets up.
+DEFAULT_STOPS = (Decimal("0.25"), Decimal("0.07"), Decimal("0.12"))
+STOPS = {"SPY": (Decimal("0.12"), Decimal("0.07"), Decimal("0.05"))}  # Strategy 3
+# Strategy 3: dollar-cost average into SPY, one buy per 7 SPY price changes (a "week"),
+# up to a target or a value cap, then hold. No ladders, profit takes or re-entry.
+DCA_SYMBOL = "SPY"
+DCA_SHARES = 4
+DCA_EVERY = 7
+DCA_TARGET = 39
+DCA_MAX_VALUE = Decimal("30000.00")
 # Profit-taking levels: (gain over average cost, sell numerator, denominator of current
 # shares), rounded down. 3/7 of what is left after the first take is another 30% of the
 # position, leaving 40% to ride the trailing stop.
@@ -132,11 +139,30 @@ def market_regime() -> tuple[Decimal, Decimal, bool]:
 
 def stop_price(holding: Holding) -> Decimal:
     """Rounded down, so a stop never rounds up to the price (e.g. a $0.01 position)."""
+    hard, _, trail = STOPS.get(holding.symbol, DEFAULT_STOPS)
     if holding.trail_peak is None:
-        stop = holding.average_cost * (1 - HARD_STOP)
+        stop = holding.average_cost * (1 - hard)
     else:
-        stop = holding.trail_peak * (1 - TRAIL)
+        stop = holding.trail_peak * (1 - trail)
     return stop.quantize(CENT, rounding=ROUND_DOWN)
+
+
+def dca_state() -> dict:
+    plan = dca_plan()
+    holding = Holding.objects.filter(symbol=DCA_SYMBOL).first()
+    next_buy_in = None
+    if plan.enabled and plan.phase == "dca":
+        moves = Quote.objects.get(symbol=DCA_SYMBOL).moves
+        last = plan.last_buy_move
+        next_buy_in = 0 if last is None else max(DCA_EVERY - (moves - last), 0)
+    return {
+        "enabled": plan.enabled,
+        "phase": plan.phase,
+        "shares": holding.quantity if holding else 0,
+        "target": DCA_TARGET,
+        "next_buy_in": next_buy_in,
+        "cycle": plan.cycle,
+    }
 
 
 @transaction.atomic
@@ -185,6 +211,7 @@ def get_state() -> dict:
             }
             for symbol, (name, _) in QUOTES.items()
         ],
+        "dca": dca_state(),
         "market": {
             "symbol": REGIME_SYMBOL,
             "price": money(regime_price),
@@ -332,7 +359,7 @@ def apply_rules(symbol: str, price: Decimal, stops_only: bool = False) -> None:
         return
     account, _ = Account.objects.get_or_create(pk=1)
     if holding.trail_peak is None:
-        raise_stop_at = holding.average_cost * (1 + TRAIL_UPGRADE)
+        raise_stop_at = holding.average_cost * (1 + STOPS.get(symbol, DEFAULT_STOPS)[1])
     else:
         raise_stop_at = holding.trail_peak
     if price >= raise_stop_at:
@@ -341,9 +368,15 @@ def apply_rules(symbol: str, price: Decimal, stops_only: bool = False) -> None:
     if price <= stop_price(holding):
         trigger = "hard_stop" if holding.trail_peak is None else "trailing_stop"
         sell(account, holding, holding.quantity, price, uuid4(), trigger)
-        Quote.objects.filter(symbol=symbol).update(stop_move=F("moves"))
+        if symbol == DCA_SYMBOL:  # start a new accumulation cycle a week from now
+            moves = Quote.objects.get(symbol=symbol).moves
+            DcaPlan.objects.filter(symbol=symbol).update(
+                phase="dca", last_buy_move=moves, cycle=F("cycle") + 1
+            )
+        else:
+            Quote.objects.filter(symbol=symbol).update(stop_move=F("moves"))
         return
-    if stops_only:
+    if stops_only or symbol == DCA_SYMBOL:
         return
     buy_ladder(account, holding, price)
     for level, (gain, numerator, denominator) in enumerate(PROFIT_TAKES, start=1):
@@ -397,8 +430,53 @@ def re_enter(symbol: str, price: Decimal) -> None:
     quote.save(update_fields=["reentry_limit", "reentry_move"])
 
 
+def dca_plan() -> DcaPlan:
+    plan, _ = DcaPlan.objects.get_or_create(symbol=DCA_SYMBOL)
+    return plan
+
+
+def dca_buy(burst: bool = False) -> None:
+    """Buy DCA_SHARES once DCA_EVERY SPY changes have passed since the last buy, or the
+    rest up to the target at once (burst). Hold at the target or the value cap."""
+    plan = dca_plan()
+    holding = Holding.objects.filter(symbol=DCA_SYMBOL).first()
+    if plan.phase == "holding" and not holding:  # sold by hand: accumulate again
+        plan.phase = "dca"
+        plan.save(update_fields=["phase"])
+    quote = Quote.objects.get(symbol=DCA_SYMBOL)
+    account, _ = Account.objects.get_or_create(pk=1)
+    last = plan.last_buy_move
+    waiting = not burst and last is not None and quote.moves - last < DCA_EVERY
+    halted = equity(account, load_prices()) < halt_below(account)
+    if not plan.enabled or plan.phase != "dca" or waiting or halted:
+        return
+    held = holding.quantity if holding else 0
+    room = int(max(DCA_MAX_VALUE - quote.price * held, 0) // quote.price)
+    want = DCA_TARGET - held if burst else DCA_SHARES
+    shares = min(want, DCA_TARGET - held, room, int(account.cash // quote.price))
+    if shares > 0:
+        trigger = "dca_burst" if burst else "dca"
+        buy(account, holding, DCA_SYMBOL, shares, quote.price, uuid4(), trigger)
+        plan.last_buy_move = quote.moves
+    if burst or held + shares >= DCA_TARGET or shares == room:
+        plan.phase = "holding"
+    plan.save(update_fields=["phase", "last_buy_move"])
+
+
+@transaction.atomic
+def set_dca(enabled: bool) -> dict:
+    load_prices()
+    plan = dca_plan()
+    plan.enabled = enabled
+    plan.save(update_fields=["enabled"])
+    if enabled:
+        dca_buy()
+    return get_state()
+
+
 def move_price(symbol: str, price: Decimal) -> None:
     """One price change: one trading day for this symbol."""
+    was_bearish = symbol == REGIME_SYMBOL and market_regime()[2]
     quote = Quote.objects.get(symbol=symbol)
     previous = quote.price if quote.ema is None else quote.ema
     quote.ema = (previous + EMA_ALPHA * (price - previous)).quantize(Decimal("0.0001"))
@@ -409,6 +487,10 @@ def move_price(symbol: str, price: Decimal) -> None:
     quote.save(update_fields=["price", "ema", "moves", "history"])
     apply_rules(symbol, price)
     re_enter(symbol, price)
+    if symbol == DCA_SYMBOL:
+        dca_buy()
+    elif was_bearish and not market_regime()[2]:  # QQQ crossed above its average
+        dca_buy(burst=True)
 
 
 @transaction.atomic
