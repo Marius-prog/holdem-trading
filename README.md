@@ -146,6 +146,7 @@ PAPER_TRADING_DB=/tmp/paperdesk-demo.sqlite3 uv run python manage.py runbolt --h
 | --- | --- |
 | `GET /` | Browser workspace |
 | `GET /api/state` | Account, quotes, holdings, and latest 100 orders |
+| `GET /api/fills.csv` | Download every filled order as CSV, newest first (`time`, `symbol`, `side`, `quantity`, `price`, `reason`) |
 | `POST /api/orders` | Submit or replay a paper order |
 | `POST /api/quotes` | Set one symbol's (or QQQ's) price, apply the rules, return the new state |
 | `POST /api/tick` | Move every price by up to 3%, apply stops, return the new state |

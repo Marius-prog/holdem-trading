@@ -1,4 +1,7 @@
+import csv
+import io
 import random
+from datetime import UTC
 from decimal import ROUND_DOWN, Decimal, InvalidOperation
 from uuid import UUID, uuid4
 
@@ -112,6 +115,32 @@ def order_data(order: Order) -> dict:
         "trigger": order.trigger,
         "created_at": order.created_at.isoformat(),
     }
+
+
+TRIGGER_LABELS = {  # the labels Recent activity shows; "" is a manual order
+    "": "Manual",
+    "hard_stop": "Hard stop",
+    "trailing_stop": "Trailing stop",
+    "profit_take": "Profit take",
+    "ladder": "Ladder buy",
+    "reentry": "Re-entry",
+    "dca": "DCA buy",
+    "dca_burst": "DCA burst",
+    "copy": "Copy trade",
+}
+
+
+def fills_csv() -> str:
+    """Every filled order, newest first, as CSV text."""
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\r\n")
+    writer.writerow(["time", "symbol", "side", "quantity", "price", "reason"])
+    for order in Order.objects.all():
+        when = order.created_at.astimezone(UTC).isoformat(timespec="seconds")
+        reason = TRIGGER_LABELS.get(order.trigger, order.trigger)
+        price = money(order.price)
+        writer.writerow([when, order.symbol, order.side, order.quantity, price, reason])
+    return out.getvalue()
 
 
 def load_prices() -> dict[str, Decimal]:
