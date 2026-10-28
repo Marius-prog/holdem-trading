@@ -29,10 +29,13 @@ class FillsCsvTests(ApiTestCase):
         )
         rows = self.rows(response)
         self.assertEqual(rows[0], ["time", "symbol", "side", "quantity", "price", "reason"])
-        self.assertEqual([row[1:] for row in rows[1:]], [
-            ["AAPL", "sell", "1", "227.52", "Manual"],
-            ["AAPL", "buy", "2", "227.52", "Manual"],
-        ])
+        self.assertEqual(
+            [row[1:] for row in rows[1:]],
+            [
+                ["AAPL", "sell", "1", "227.52", "Manual"],
+                ["AAPL", "buy", "2", "227.52", "Manual"],
+            ],
+        )
         self.assertRegex(rows[1][0], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\+00:00$")
 
     def test_automatic_orders_use_activity_labels(self):
