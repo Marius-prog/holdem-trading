@@ -6,13 +6,14 @@ import msgspec
 from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.http.request import split_domain_port, validate_host
-from django_bolt import JSON, BoltAPI, Request
+from django_bolt import JSON, BoltAPI, Request, Response
 from django_bolt.param_functions import Header
 from django_bolt.shortcuts import render
 
 from .copytrader import record_filing
 from .services import (
     TradeError,
+    fills_csv,
     get_state,
     place_order,
     reset_kill_switch,
@@ -77,6 +78,19 @@ async def state(host: HostHeader = ""):
     if refused := refuse_foreign_host(host):
         return refused
     return await sync_to_async(get_state)()
+
+
+@api.get("/api/fills.csv")
+async def fills_csv_download(host: HostHeader = ""):
+    if refused := refuse_foreign_host(host):
+        return refused
+    return Response(
+        await sync_to_async(fills_csv)(),
+        headers={
+            "Content-Disposition": 'attachment; filename="paperdesk-fills.csv"',
+        },
+        media_type="text/csv; charset=utf-8",
+    )
 
 
 @api.post("/api/orders")
